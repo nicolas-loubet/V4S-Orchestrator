@@ -1,0 +1,47 @@
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+v4s_env/
+pip-log.txt
+pip-delete-this-directory.txt
+.env
+
+# === GROMACS & Sistemas de Simulación ===
+data/sistemas/*
+*.gro
+*.top
+*.itp
+*.ndx
+*.mdp
+*.tpr
+*.xtc
+*.trr
+*.edr
+*.log
+*.cpt
+
+# === Datos de Salida y Gráficos ===
+data/resultados/*
+*.csv
+*.png
+*.pdf
+*.svg
+
+# === IDEs y Editores de Código ===
+.vscode/
+.idea/
+*.swp
+*~
+
+# === Sistema Operativo ===
+.DS_Store
+.directory
+
+# === Notas de desarrollo ===
+notas/
