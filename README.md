@@ -1,6 +1,6 @@
 # V4S-Orchestrator
 
-Versión actual: 1.0.0-a1
+Versión actual: 1.0.0-a2
 
 V4S-Orchestrator es un sistema de orquestación local diseñado para automatizar el flujo de trabajo de simulaciones en GROMACS y el cálculo del índice de orden estructural mediante binarios de C++.
 
