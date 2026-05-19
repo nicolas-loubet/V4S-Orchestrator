@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}V4S-Orchestrator{% endblock %}</title>
+
+    <!-- TailwindCSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        surface: {
+                            900: '#0a0e17',
+                            800: '#0f1520',
+                            700: '#151d2e',
+                            600: '#1c2740',
+                        },
+                        accent: {
+                            DEFAULT: '#38bdf8',
+                            dim:     '#0ea5e9',
+                            glow:    '#7dd3fc',
+                        },
+                        border: {
+                            dim: '#1e2d45',
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                        sans: ['"DM Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+
+    <style>
+        /* Base layout */
+        html, body {
+            height: 100%;
+            background-color: #0a0e17;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f1520; }
+        ::-webkit-scrollbar-thumb { background: #1e2d45; border-radius: 3px; }
+
+        /* Active tab indicator */
+        .tab-btn.active {
+            color: #38bdf8;
+            border-bottom-color: #38bdf8;
+        }
+        .tab-btn.active span.tab-dot {
+            background-color: #38bdf8;
+            box-shadow: 0 0 8px #38bdf8;
+        }
+
+        /* HTMX loading indicator */
+        #tab-content.htmx-request {
+            opacity: 0.4;
+            transition: opacity 0.15s ease;
+        }
+        #tab-content {
+            opacity: 1;
+            transition: opacity 0.2s ease;
+        }
+
+        /* Subtle grid background texture */
+        .bg-grid {
+            background-image:
+                linear-gradient(rgba(56,189,248,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(56,189,248,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+    </style>
+</head>
+<body class="font-sans text-slate-300 bg-surface-900 bg-grid min-h-screen flex flex-col">
+
+    <!-- Top bar -->
+    <header class="border-b border-border-dim bg-surface-800/80 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 flex items-center justify-between h-14">
+
+            <!-- Logo / title -->
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 rounded-full bg-accent animate-pulse"></div>
+                <span class="font-mono text-sm font-bold tracking-widest text-accent uppercase">
+                    V4S<span class="text-slate-500">-</span>Orchestrator
+                </span>
+            </div>
+
+            <!-- Status badge -->
+            <span class="font-mono text-xs text-slate-500 bg-surface-700 px-3 py-1 rounded-full border border-border-dim">
+                local · FastAPI
+            </span>
+        </div>
+    </header>
+
+    <!-- Navigation tabs -->
+    <nav class="border-b border-border-dim bg-surface-800/60 sticky top-14 z-40 backdrop-blur-sm">
+        <div class="max-w-6xl mx-auto px-4">
+            <div class="flex items-center gap-1 overflow-x-auto no-scrollbar">
+
+                <button
+                    class="tab-btn active flex items-center gap-2 px-4 py-3 font-mono text-xs font-medium
+                           text-slate-400 border-b-2 border-transparent
+                           hover:text-accent transition-colors duration-150 whitespace-nowrap"
+                    hx-get="/tabs/sistema"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML"
+                    onclick="setActive(this)"
+                >
+                    <span class="tab-dot w-1.5 h-1.5 rounded-full bg-slate-600 transition-all duration-150"></span>
+                    Sistema
+                </button>
+
+                <button
+                    class="tab-btn flex items-center gap-2 px-4 py-3 font-mono text-xs font-medium
+                           text-slate-400 border-b-2 border-transparent
+                           hover:text-accent transition-colors duration-150 whitespace-nowrap"
+                    hx-get="/tabs/calculo"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML"
+                    onclick="setActive(this)"
+                >
+                    <span class="tab-dot w-1.5 h-1.5 rounded-full bg-slate-600 transition-all duration-150"></span>
+                    Cálculo
+                </button>
+
+                <button
+                    class="tab-btn flex items-center gap-2 px-4 py-3 font-mono text-xs font-medium
+                           text-slate-400 border-b-2 border-transparent
+                           hover:text-accent transition-colors duration-150 whitespace-nowrap"
+                    hx-get="/tabs/visualizacion"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML"
+                    onclick="setActive(this)"
+                >
+                    <span class="tab-dot w-1.5 h-1.5 rounded-full bg-slate-600 transition-all duration-150"></span>
+                    Visualización
+                </button>
+
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content area -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 py-6">
+        <div id="tab-content">
+            {% block tab_content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-border-dim py-3 px-4">
+        <p class="text-center font-mono text-xs text-slate-600">
+            V4S-Orchestrator &mdash; GROMACS simulation controller & V4S calculator
+        </p>
+    </footer>
+
+    <script>
+        function setActive(el) {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            el.classList.add('active');
+        }
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
