@@ -1,18 +1,112 @@
-<div class="space-y-4">
+<div class="space-y-5">
 
-    <!-- Header -->
-    <div class="border-b border-border-dim pb-4">
-        <h2 class="font-mono text-lg font-bold text-accent tracking-wide">
-            Elegir Sistema
-        </h2>
-        <p class="text-slate-500 text-sm mt-1">Selección y configuración del sistema molecular.</p>
+    <div class="flex items-center justify-between border-b border-border-dim pb-4">
+        <div>
+            <h2 class="font-mono text-lg font-bold text-accent tracking-wide">Elegir Sistema</h2>
+            <p class="text-slate-500 text-sm mt-0.5">Selección y configuración del sistema molecular.</p>
+        </div>
+        <button
+            disabled
+            title="Próximamente"
+            class="flex items-center gap-2 font-mono text-xs px-4 py-2 rounded-md
+                   border border-border-dim text-slate-600 bg-surface-700/40
+                   cursor-not-allowed select-none"
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Crear nuevo
+        </button>
     </div>
 
-    <!-- Placeholder -->
-    <div class="rounded-lg border border-border-dim bg-surface-700/50 px-6 py-10 text-center">
-        <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">
-            Contenido en construcción
-        </p>
-    </div>
+    {% if sistemas %}
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {% for s in sistemas %}
+            <div
+                class="group relative rounded-lg border border-border-dim bg-surface-700/50
+                       hover:border-accent/40 hover:bg-surface-700/80
+                       transition-all duration-150 cursor-pointer overflow-hidden"
+                onclick="selectSistema(this, '{{ s.id }}')"
+            >
+                <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-accent
+                            opacity-0 group-hover:opacity-40 transition-opacity duration-150
+                            selected-bar"></div>
+
+                <div class="px-4 py-4 space-y-3">
+                    <div>
+                        <p class="font-mono text-sm font-bold text-slate-200 leading-tight">{{ s.name }}</p>
+                        <p class="font-mono text-xs text-slate-600 mt-0.5">{{ s.id }}</p>
+                    </div>
+                    <p class="text-xs text-slate-400 leading-relaxed line-clamp-2">{{ s.description }}</p>
+                    <div class="flex flex-wrap gap-2 pt-1">
+                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">
+                            {{ s.total_ns }} ns
+                        </span>
+                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">
+                            &Delta;t {{ s.interval_ps }} ps
+                        </span>
+                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">
+                            {{ s.ensemble }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div id="sistema-detail" class="hidden rounded-lg border border-accent/30
+             bg-surface-800/80 px-5 py-4 space-y-2">
+            <p class="font-mono text-xs text-accent uppercase tracking-widest mb-3">Sistema seleccionado</p>
+            <p class="font-mono text-sm text-slate-200" id="detail-name"></p>
+            <p class="text-xs text-slate-400" id="detail-desc"></p>
+            <div class="flex flex-wrap gap-3 pt-2" id="detail-chips"></div>
+        </div>
+
+    {% else %}
+        <div class="rounded-lg border border-border-dim bg-surface-700/30 px-6 py-12 text-center space-y-2">
+            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">No se encontraron sistemas</p>
+            <p class="text-xs text-slate-600">
+                Revisá que la carpeta <code class="text-slate-500">../data/</code> exista
+                y contenga subcarpetas con su <code class="text-slate-500">system.toml</code>.
+            </p>
+        </div>
+    {% endif %}
 
 </div>
+
+<div id="sistemas-data" data-sistemas="{{ sistemas_json }}" style="display:none"></div>
+
+<script>
+    const sistemasData = JSON.parse(document.getElementById('sistemas-data').dataset.sistemas);
+
+    let selectedId = null;
+
+    function selectSistema(card, id) {
+        document.querySelectorAll('[onclick^="selectSistema"]').forEach(c => {
+            c.classList.remove('border-accent/60', 'bg-surface-700/90');
+            c.querySelector('.selected-bar').style.opacity = '';
+        });
+
+        if (selectedId === id) {
+            selectedId = null;
+            document.getElementById('sistema-detail').classList.add('hidden');
+            return;
+        }
+
+        selectedId = id;
+        card.classList.add('border-accent/60', 'bg-surface-700/90');
+        card.querySelector('.selected-bar').style.opacity = '1';
+
+        const s = sistemasData[id];
+        document.getElementById('detail-name').textContent = s.name;
+        document.getElementById('detail-desc').textContent = s.desc;
+        document.getElementById('detail-chips').innerHTML =
+            `<span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-accent">${s.total_ns} ns simulados</span>
+             <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">&Delta;t ${s.interval} ps</span>
+             <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">${s.ensemble}</span>`;
+
+        document.getElementById('sistema-detail').classList.remove('hidden');
+    }
+</script>
