@@ -1,3 +1,5 @@
+<div id="sistemas-data" data-sistemas="{{ sistemas_json }}" style="display:none"></div>
+
 <div class="space-y-5">
 
     <div class="flex items-center justify-between border-b border-border-dim pb-4">
@@ -22,13 +24,14 @@
     </div>
 
     {% if sistemas %}
-        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" id="sistemas-grid">
             {% for s in sistemas %}
             <div
-                class="group relative rounded-lg border border-border-dim bg-surface-700/50
+                class="sistema-card group relative rounded-lg border border-border-dim bg-surface-700/50
                        hover:border-accent/40 hover:bg-surface-700/80
                        transition-all duration-150 cursor-pointer overflow-hidden"
-                onclick="selectSistema(this, '{{ s.id }}')"
+                data-id="{{ s.id }}"
+                onclick="window.selectSistema(this, '{{ s.id }}')"
             >
                 <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-accent
                             opacity-0 group-hover:opacity-40 transition-opacity duration-150
@@ -41,15 +44,9 @@
                     </div>
                     <p class="text-xs text-slate-400 leading-relaxed line-clamp-2">{{ s.description }}</p>
                     <div class="flex flex-wrap gap-2 pt-1">
-                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">
-                            {{ s.total_ns }} ns
-                        </span>
-                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">
-                            &Delta;t {{ s.interval_ps }} ps
-                        </span>
-                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">
-                            {{ s.ensemble }}
-                        </span>
+                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">{{ s.total_ns }} ns</span>
+                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">&Delta;t {{ s.interval_ps }} ps</span>
+                        <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">{{ s.ensemble }}</span>
                     </div>
                 </div>
             </div>
@@ -61,7 +58,22 @@
             <p class="font-mono text-xs text-accent uppercase tracking-widest mb-3">Sistema seleccionado</p>
             <p class="font-mono text-sm text-slate-200" id="detail-name"></p>
             <p class="text-xs text-slate-400" id="detail-desc"></p>
-            <div class="flex flex-wrap gap-3 pt-2" id="detail-chips"></div>
+            <div class="flex items-center justify-between pt-2">
+                <div class="flex flex-wrap gap-3" id="detail-chips"></div>
+                <button id="go-calculo-btn"
+                        onclick="window.goToCalculo()"
+                        class="flex items-center gap-2 font-mono text-xs px-4 py-2 rounded-md
+                               bg-accent/10 border border-accent/40 text-accent
+                               hover:bg-accent/20 hover:border-accent/70 transition-all duration-150 whitespace-nowrap">
+                    Ir a Cálculo
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </button>
+            </div>
         </div>
 
     {% else %}
@@ -76,37 +88,64 @@
 
 </div>
 
-<div id="sistemas-data" data-sistemas="{{ sistemas_json }}" style="display:none"></div>
-
 <script>
+(function () {
     const sistemasData = JSON.parse(document.getElementById('sistemas-data').dataset.sistemas);
 
-    let selectedId = null;
+    // Restaurar seleccion visual si ya habia un sistema activo al recargar el tab
+    const currentId = window._activeSistemaId || null;
+    if (currentId) {
+        const card = document.querySelector(`.sistema-card[data-id="${currentId}"]`);
+        if (card) highlightCard(card);
+        renderDetail(currentId);
+    }
 
-    function selectSistema(card, id) {
-        document.querySelectorAll('[onclick^="selectSistema"]').forEach(c => {
+    function highlightCard(card) {
+        document.querySelectorAll('.sistema-card').forEach(c => {
             c.classList.remove('border-accent/60', 'bg-surface-700/90');
             c.querySelector('.selected-bar').style.opacity = '';
         });
+        card.classList.add('border-accent/60', 'bg-surface-700/90');
+        card.querySelector('.selected-bar').style.opacity = '1';
+    }
 
-        if (selectedId === id) {
-            selectedId = null;
+    function renderDetail(id) {
+        const s = sistemasData[id];
+        if (!s) return;
+        document.getElementById('detail-name').textContent = s.name;
+        document.getElementById('detail-desc').textContent = s.description;
+        document.getElementById('detail-chips').innerHTML =
+            `<span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-accent">${s.total_ns} ns simulados</span>
+             <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">&Delta;t ${s.interval_ps} ps</span>
+             <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">${s.ensemble}</span>`;
+        document.getElementById('sistema-detail').classList.remove('hidden');
+    }
+
+    function selectSistema(card, id) {
+        if (window._activeSistemaId === id) {
+            // Deseleccionar
+            window._activeSistemaId = null;
+            window.enableCalculoTab(null);
+            document.querySelectorAll('.sistema-card').forEach(c => {
+                c.classList.remove('border-accent/60', 'bg-surface-700/90');
+                c.querySelector('.selected-bar').style.opacity = '';
+            });
             document.getElementById('sistema-detail').classList.add('hidden');
             return;
         }
 
-        selectedId = id;
-        card.classList.add('border-accent/60', 'bg-surface-700/90');
-        card.querySelector('.selected-bar').style.opacity = '1';
-
-        const s = sistemasData[id];
-        document.getElementById('detail-name').textContent = s.name;
-        document.getElementById('detail-desc').textContent = s.desc;
-        document.getElementById('detail-chips').innerHTML =
-            `<span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-accent">${s.total_ns} ns simulados</span>
-             <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">&Delta;t ${s.interval} ps</span>
-             <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">${s.ensemble}</span>`;
-
-        document.getElementById('sistema-detail').classList.remove('hidden');
+        window._activeSistemaId = id;
+        window.enableCalculoTab(id);
+        highlightCard(card);
+        renderDetail(id);
     }
+
+    function goToCalculo() {
+        const btn = document.getElementById('nav-calculo-btn');
+        if (btn) window.navToCalculo(btn);
+    }
+
+    window.selectSistema = selectSistema;
+    window.goToCalculo   = goToCalculo;
+})();
 </script>

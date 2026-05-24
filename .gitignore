@@ -32,6 +32,7 @@ data/resultados/*
 *.png
 *.pdf
 *.svg
+!favicon.svg
 
 # === IDEs y Editores de Código ===
 .vscode/

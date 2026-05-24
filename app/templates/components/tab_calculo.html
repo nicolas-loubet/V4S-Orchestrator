@@ -1,12 +1,658 @@
-<div class="space-y-4">
+<div class="space-y-6">
 
+    <!-- Header -->
     <div class="border-b border-border-dim pb-4">
         <h2 class="font-mono text-lg font-bold text-accent tracking-wide">Configurar Cálculo</h2>
-        <p class="text-slate-500 text-sm mt-0.5">Parámetros de simulación y opciones de GROMACS.</p>
+        <p class="text-slate-500 text-sm mt-0.5">Parámetros de análisis para V4S.</p>
     </div>
 
-    <div class="rounded-lg border border-border-dim bg-surface-700/30 px-6 py-10 text-center">
-        <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">Contenido en construcción</p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Columna izquierda: parametros del calculo -->
+        <div class="space-y-5">
+
+            <!-- Parametros V -->
+            <div class="rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-4">
+                <p class="font-mono text-xs text-accent uppercase tracking-widest">Parámetros</p>
+                <div class="grid grid-cols-4 gap-3">
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" name="params" value="V1S"
+                               class="v-checkbox w-4 h-4 rounded accent-sky-400 cursor-pointer"
+                               onchange="window.v4s.enforceMinOne(this)" />
+                        <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">V<sub>1S</sub></span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" name="params" value="V2S"
+                               class="v-checkbox w-4 h-4 rounded accent-sky-400 cursor-pointer"
+                               onchange="window.v4s.enforceMinOne(this)" />
+                        <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">V<sub>2S</sub></span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" name="params" value="V3S"
+                               class="v-checkbox w-4 h-4 rounded accent-sky-400 cursor-pointer"
+                               onchange="window.v4s.enforceMinOne(this)" />
+                        <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">V<sub>3S</sub></span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="checkbox" name="params" value="V4S" checked
+                               class="v-checkbox w-4 h-4 rounded accent-sky-400 cursor-pointer"
+                               onchange="window.v4s.enforceMinOne(this)" />
+                        <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">V<sub>4S</sub></span>
+                    </label>
+                </div>
+                <p id="params-warning" class="hidden font-mono text-xs text-red-400">
+                    Al menos un parámetro debe estar activo.
+                </p>
+            </div>
+
+            <!-- Unidades -->
+            <div class="rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-3">
+                <p class="font-mono text-xs text-accent uppercase tracking-widest">Unidades de salida</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="radio" name="units" value="kJ/mol" checked
+                               class="w-4 h-4 accent-sky-400 cursor-pointer" />
+                        <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">kJ/mol</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer group">
+                        <input type="radio" name="units" value="adimensional"
+                               class="w-4 h-4 accent-sky-400 cursor-pointer" />
+                        <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">
+                            Adimensional (&omega;<sub>m</sub>)
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Ambito de agregacion -->
+            <div class="rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-3">
+                <p class="font-mono text-xs text-accent uppercase tracking-widest">Ámbito de agregación</p>
+                <select id="monolayer-select"
+                        class="w-full font-mono text-sm bg-surface-600 border border-border-dim
+                               text-slate-300 rounded-md px-3 py-2
+                               focus:outline-none focus:border-accent/60 transition-colors"
+                        onchange="window.v4s.toggleAtomSelection(this.value)">
+                    <option value="all">Toda la configuración</option>
+                    <option value="monolayer" selected>Monocapa completa</option>
+                    <option value="selection">Moléculas más cercanas a una selección de átomos</option>
+                </select>
+                <div id="atom-selection-input" class="hidden space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Selección de átomos</label>
+                    <input type="text" placeholder="ej. resname SOL and name OW"
+                           class="w-full font-mono text-sm bg-surface-600 border border-border-dim
+                                  text-slate-300 rounded-md px-3 py-2 placeholder-slate-600
+                                  focus:outline-none focus:border-accent/60 transition-colors" />
+                </div>
+            </div>
+
+            <!-- Geometria de restriccion -->
+            <div class="rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-4">
+                <p class="font-mono text-xs text-accent uppercase tracking-widest">Geometría de restricción</p>
+                <select id="geometry-select"
+                        class="w-full font-mono text-sm bg-surface-600 border border-border-dim
+                               text-slate-300 rounded-md px-3 py-2
+                               focus:outline-none focus:border-accent/60 transition-colors"
+                        onchange="window.v4s.switchGeometry(this.value)">
+                    <option value="cube">Cubo</option>
+                    <option value="cylinder">Cilindro</option>
+                    <option value="sphere">Esfera</option>
+                </select>
+
+                <!-- Cubo -->
+                <div id="geo-cube" class="space-y-2">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">X mín</label><input type="number" step="0.1" placeholder="0.0" id="cube-xmin" class="geo-input w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">X máx</label><input type="number" step="0.1" placeholder="0.0" id="cube-xmax" class="geo-input w-full" /></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Y mín</label><input type="number" step="0.1" placeholder="0.0" id="cube-ymin" class="geo-input w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Y máx</label><input type="number" step="0.1" placeholder="0.0" id="cube-ymax" class="geo-input w-full" /></div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Z mín</label><input type="number" step="0.1" placeholder="0.0" id="cube-zmin" class="geo-input w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Z máx</label><input type="number" step="0.1" placeholder="0.0" id="cube-zmax" class="geo-input w-full" /></div>
+                    </div>
+                </div>
+
+                <!-- Cilindro -->
+                <div id="geo-cylinder" class="hidden space-y-3">
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500">Eje principal</label>
+                        <select id="cyl-axis"
+                                class="w-full font-mono text-sm bg-surface-600 border border-border-dim
+                                       text-slate-300 rounded-md px-3 py-2
+                                       focus:outline-none focus:border-accent/60 transition-colors"
+                                onchange="window.v4s.updateCylinderLabels(this.value)">
+                            <option value="X">X</option>
+                            <option value="Y">Y</option>
+                            <option value="Z" selected>Z</option>
+                        </select>
+                    </div>
+                    <div class="grid grid-cols-4 gap-3">
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500" id="cyl-c1-label">Centro X</label><input type="number" step="0.1" placeholder="0.0" id="cyl-c1" class="geo-input w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500" id="cyl-c2-label">Centro Y</label><input type="number" step="0.1" placeholder="0.0" id="cyl-c2" class="geo-input w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Radio</label><input type="number" step="0.1" placeholder="0.0" id="cyl-radius" class="geo-input w-full" /></div>
+                        <div></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500" id="cyl-hmin-label">Z mín</label><input type="number" step="0.1" placeholder="0.0" id="cyl-hmin" class="geo-input w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500" id="cyl-hmax-label">Z máx</label><input type="number" step="0.1" placeholder="0.0" id="cyl-hmax" class="geo-input w-full" /></div>
+                    </div>
+                </div>
+
+                <!-- Esfera -->
+                <div id="geo-sphere" class="hidden space-y-3">
+                    <label class="flex items-center gap-3 group" title="Requiere selección de átomos activa">
+                        <div class="relative inline-flex items-center">
+                            <input type="checkbox" id="sphere-autocenter" class="sr-only peer" disabled
+                                   onchange="window.v4s.toggleAutocenter(this.checked)" />
+                            <div class="w-9 h-5 bg-surface-600 border border-border-dim rounded-full
+                                        peer-checked:bg-accent/30 peer-checked:border-accent/60
+                                        peer-disabled:opacity-35 transition-colors duration-150"></div>
+                            <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-slate-500 rounded-full
+                                        peer-checked:translate-x-4 peer-checked:bg-accent
+                                        peer-disabled:opacity-35 transition-all duration-150"></div>
+                        </div>
+                        <span class="font-mono text-xs text-slate-600 transition-colors" id="autocenter-text">
+                            Centrar automáticamente en cada átomo de la selección
+                        </span>
+                    </label>
+                    <div class="grid grid-cols-3 gap-3">
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Centro X</label><input type="number" step="0.1" placeholder="0.0" id="sph-cx" class="geo-input sphere-pos w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Centro Y</label><input type="number" step="0.1" placeholder="0.0" id="sph-cy" class="geo-input sphere-pos w-full" /></div>
+                        <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Centro Z</label><input type="number" step="0.1" placeholder="0.0" id="sph-cz" class="geo-input sphere-pos w-full" /></div>
+                    </div>
+                    <div class="space-y-1.5"><label class="font-mono text-xs text-slate-500">Radio</label><input type="number" step="0.1" placeholder="0.0" id="sph-radius" class="geo-input w-full" /></div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Columna derecha: visualizador 3D -->
+        <div class="flex flex-col gap-3">
+            <div class="rounded-lg border border-border-dim bg-surface-900 overflow-hidden relative"
+                 style="height: 420px;">
+                <canvas id="viewport-3d" class="w-full h-full block"></canvas>
+
+                <div id="vp-no-system"
+                     class="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-slate-700"
+                         viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                    </svg>
+                    <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">
+                        Seleccioná un sistema para visualizar
+                    </p>
+                </div>
+
+                <div id="vp-loading"
+                     class="absolute inset-0 hidden flex-col items-center justify-center gap-2">
+                    <div class="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></div>
+                    <p class="font-mono text-xs text-slate-500">Cargando estructura...</p>
+                </div>
+
+                <div id="vp-atom-count" class="absolute bottom-2 left-3 font-mono text-xs text-slate-600 hidden"></div>
+                <div id="vp-geo-indicator" class="absolute top-2 right-3 font-mono text-xs text-accent/60 hidden"></div>
+            </div>
+
+            <div class="flex items-center gap-4 px-1">
+                <p class="font-mono text-xs text-slate-600">Rotar: arrastrar &nbsp;|&nbsp; Zoom: scroll</p>
+                <button onclick="window.v4s.resetCamera()"
+                        class="ml-auto font-mono text-xs px-3 py-1 rounded border border-border-dim
+                               text-slate-500 hover:text-accent hover:border-accent/40 transition-colors">
+                    Reset cámara
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Boton ejecutar -->
+    <div class="flex justify-end pt-2 border-t border-border-dim">
+        <button id="run-btn"
+                class="font-mono text-xs px-6 py-2.5 rounded-md
+                       bg-accent/10 border border-accent/40 text-accent
+                       hover:bg-accent/20 hover:border-accent/70
+                       transition-all duration-150">
+            Ejecutar cálculo
+        </button>
     </div>
 
 </div>
+
+<style>
+    .geo-input {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        background-color: #1c2740;
+        border: 1px solid #1e2d45;
+        color: #cbd5e1;
+        border-radius: 0.375rem;
+        padding: 0.375rem 0.625rem;
+        transition: border-color 0.15s;
+    }
+    .geo-input:focus   { outline: none; border-color: rgba(56,189,248,0.5); }
+    .geo-input:disabled { opacity: 0.35; cursor: not-allowed; }
+    .geo-input::-webkit-inner-spin-button,
+    .geo-input::-webkit-outer-spin-button { opacity: 0.15; }
+    .geo-input[type=number] { -moz-appearance: textfield; }
+</style>
+
+<script>
+(function () {
+    // Limpiar instancia anterior si el tab se recarga via HTMX
+    if (window.v4s && window.v4s.renderer) {
+        window.v4s.renderer.dispose();
+    }
+
+    const SISTEMA_ID = "{{ sistema_id }}";
+
+    const CPK = {
+        H: 0xFFFFFF, C: 0x404040, N: 0x3050F8, O: 0xFF0D0D,
+        F: 0x90E050, P: 0xFF8000, S: 0xFFFF30, Cl: 0x1FF01F,
+        Br: 0xA62929, I: 0x940094, Fe: 0xE06633, Ca: 0x3DFF00,
+        Na: 0xAB5CF2, Mg: 0x8AFF00, default: 0xFF69B4,
+    };
+    const VDW_R = {
+        H: 0.25, C: 0.35, N: 0.32, O: 0.30, S: 0.37,
+        P: 0.38, F: 0.28, Cl: 0.45, default: 0.35,
+    };
+
+    // Estado de la escena
+    let scene, camera, renderer, geoMesh = null;
+    let isDragging = false, prevMouse = { x: 0, y: 0 };
+    let spherical = { theta: 0.4, phi: 1.1, radius: 80 };
+    let atomCount = 0, debounceTimer = null;
+    let centroid = { x: 0, y: 0, z: 0 };
+
+    // --------------------------------------------------------
+    // ESCENA
+    // --------------------------------------------------------
+    function webglAvailable() {
+        try {
+            const c = document.createElement('canvas');
+            return !!(window.WebGLRenderingContext &&
+                (c.getContext('webgl') || c.getContext('experimental-webgl')));
+        } catch (e) { return false; }
+    }
+
+    function showWebGLError() {
+        const canvas = document.getElementById('viewport-3d');
+        canvas.style.display = 'none';
+        const container = canvas.parentElement;
+        const msg = document.createElement('div');
+        msg.className = 'absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center';
+        msg.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-slate-600" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">WebGL no disponible</p>
+            <p class="text-xs text-slate-600 max-w-xs">
+                Activá la aceleración de hardware en tu browser para usar el visualizador 3D.
+            </p>`;
+        container.appendChild(msg);
+    }
+
+    function initThree() {
+        if (!webglAvailable()) { showWebGLError(); return; }
+
+        const canvas    = document.getElementById('viewport-3d');
+        const container = canvas.parentElement;
+
+        renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setClearColor(0x0a0e17, 1);
+
+        scene  = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+
+        renderer.setSize(container.clientWidth, container.clientHeight);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+        const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+        dir.position.set(50, 80, 60);
+        scene.add(dir);
+
+        updateCamera();
+        animate();
+
+        new ResizeObserver(() => {
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+        }).observe(container);
+    }
+
+    function updateCamera() {
+        const { theta, phi, radius } = spherical;
+        camera.position.set(
+            centroid.x + radius * Math.sin(phi) * Math.sin(theta),
+            centroid.y + radius * Math.cos(phi),
+            centroid.z + radius * Math.sin(phi) * Math.cos(theta)
+        );
+        camera.lookAt(centroid.x, centroid.y, centroid.z);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+    }
+
+    function resetCamera() {
+        spherical = { theta: 0.4, phi: 1.1, radius: spherical.radius };
+        updateCamera();
+    }
+
+    // --------------------------------------------------------
+    // CONTROLES
+    // --------------------------------------------------------
+    function setupControls() {
+        const canvas = document.getElementById('viewport-3d');
+
+        canvas.addEventListener('mousedown',  e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+        canvas.addEventListener('mouseup',    () => isDragging = false);
+        canvas.addEventListener('mouseleave', () => isDragging = false);
+        canvas.addEventListener('mousemove',  e => {
+            if (!isDragging) return;
+            spherical.theta -= (e.clientX - prevMouse.x) * 0.005;
+            spherical.phi    = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - (e.clientY - prevMouse.y) * 0.005));
+            prevMouse = { x: e.clientX, y: e.clientY };
+            updateCamera();
+        });
+        canvas.addEventListener('wheel', e => {
+            spherical.radius = Math.max(5, spherical.radius * (1 + e.deltaY * 0.001));
+            updateCamera();
+            e.preventDefault();
+        }, { passive: false });
+
+        let lastTouchDist = null;
+        canvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) { isDragging = true; prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }
+            if (e.touches.length === 2) lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        });
+        canvas.addEventListener('touchend',  () => { isDragging = false; lastTouchDist = null; });
+        canvas.addEventListener('touchmove', e => {
+            if (e.touches.length === 1 && isDragging) {
+                spherical.theta -= (e.touches[0].clientX - prevMouse.x) * 0.005;
+                spherical.phi    = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi - (e.touches[0].clientY - prevMouse.y) * 0.005));
+                prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                updateCamera();
+            }
+            if (e.touches.length === 2 && lastTouchDist !== null) {
+                const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+                spherical.radius = Math.max(5, spherical.radius * (lastTouchDist / d));
+                lastTouchDist = d;
+                updateCamera();
+            }
+            e.preventDefault();
+        }, { passive: false });
+    }
+
+    // --------------------------------------------------------
+    // ATOMOS
+    // --------------------------------------------------------
+    async function loadSolute(id) {
+        if (!renderer) return;
+        document.getElementById('vp-no-system').style.display = 'none';
+        document.getElementById('vp-loading').style.display   = 'flex';
+        try {
+            const resp = await fetch(`/api/solute/${id}`);
+            if (!resp.ok) throw new Error(resp.statusText);
+            const data = await resp.json();
+            buildAtomMeshes(data.atoms);
+        } catch (err) {
+            console.error('[V4S]', err);
+            document.getElementById('vp-no-system').style.display = 'flex';
+        } finally {
+            document.getElementById('vp-loading').style.display = 'none';
+        }
+    }
+
+    function buildAtomMeshes(atoms) {
+        scene.children.filter(o => o.userData.isAtom).forEach(o => scene.remove(o));
+
+        // Calcular centroide solo para apuntar la camara, NO para mover atomos
+        let cx = 0, cy = 0, cz = 0;
+        atoms.forEach(a => { cx += a.x; cy += a.y; cz += a.z; });
+        cx /= atoms.length; cy /= atoms.length; cz /= atoms.length;
+
+        // Radio maximo desde el centroide para ajustar zoom
+        let maxR = 0;
+        atoms.forEach(a => { const d = Math.sqrt((a.x-cx)**2+(a.y-cy)**2+(a.z-cz)**2); if (d > maxR) maxR = d; });
+
+        // Agrupar por simbolo usando coordenadas reales (sin restar centroide)
+        const bySymbol = {};
+        atoms.forEach(a => {
+            const s = a.s.charAt(0).toUpperCase();
+            (bySymbol[s] = bySymbol[s] || []).push({ x: a.x, y: a.y, z: a.z });
+        });
+
+        const sphereGeo = new THREE.SphereGeometry(1, 10, 8);
+        const dummy     = new THREE.Object3D();
+
+        Object.entries(bySymbol).forEach(([sym, positions]) => {
+            const mat  = new THREE.MeshPhongMaterial({ color: CPK[sym] ?? CPK.default, shininess: 60 });
+            const mesh = new THREE.InstancedMesh(sphereGeo, mat, positions.length);
+            mesh.userData.isAtom = true;
+            positions.forEach((p, i) => {
+                dummy.position.set(p.x, p.y, p.z);
+                dummy.scale.setScalar(VDW_R[sym] ?? VDW_R.default);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+            scene.add(mesh);
+        });
+
+        // Guardar centroide para que la camara orbite alrededor de el
+        centroid = { x: cx, y: cy, z: cz };
+        atomCount = atoms.length;
+        spherical.radius = maxR * 2.2;
+        updateCamera();
+
+        const ac = document.getElementById('vp-atom-count');
+        ac.textContent = `${atomCount} átomos`;
+        ac.classList.remove('hidden');
+    }
+
+    // --------------------------------------------------------
+    // GEOMETRIA
+    // --------------------------------------------------------
+    function clearGeoMesh() {
+        if (geoMesh) { scene.remove(geoMesh); geoMesh = null; }
+        document.getElementById('vp-geo-indicator').classList.add('hidden');
+    }
+
+    function showGeoIndicator(label) {
+        const el = document.getElementById('vp-geo-indicator');
+        el.textContent = label;
+        el.classList.remove('hidden');
+    }
+
+    function drawCube(xmin, xmax, ymin, ymax, zmin, zmax) {
+        clearGeoMesh();
+        const sx = xmax-xmin, sy = ymax-ymin, sz = zmax-zmin;
+        if (sx <= 0 || sy <= 0 || sz <= 0) return;
+        const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+        geoMesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+        geoMesh.position.set((xmin+xmax)/2, (ymin+ymax)/2, (zmin+zmax)/2);
+        scene.add(geoMesh);
+        showGeoIndicator('Cubo');
+    }
+
+    function drawCylinder(axis, c1, c2, radius, hmin, hmax) {
+        clearGeoMesh();
+        const height = hmax - hmin;
+        if (height <= 0 || radius <= 0) return;
+        const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+        geoMesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, 32, 1, true), mat);
+        const mid = (hmin + hmax) / 2;
+        if      (axis === 'X') { geoMesh.rotation.z = Math.PI/2; geoMesh.position.set(mid, c1, c2); }
+        else if (axis === 'Y') { geoMesh.position.set(c1, mid, c2); }
+        else                   { geoMesh.rotation.x = Math.PI/2; geoMesh.position.set(c1, c2, mid); }
+        scene.add(geoMesh);
+        showGeoIndicator('Cilindro');
+    }
+
+    function drawSphere(cx, cy, cz, radius) {
+        clearGeoMesh();
+        if (radius <= 0) return;
+        const mat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+        geoMesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 16), mat);
+        geoMesh.position.set(cx, cy, cz);
+        scene.add(geoMesh);
+        showGeoIndicator('Esfera');
+    }
+
+    function readGeoAndDraw() {
+        const type = document.getElementById('geometry-select').value;
+        const v    = id => parseFloat(document.getElementById(id)?.value) || 0;
+        if      (type === 'cube')     drawCube(v('cube-xmin'), v('cube-xmax'), v('cube-ymin'), v('cube-ymax'), v('cube-zmin'), v('cube-zmax'));
+        else if (type === 'cylinder') drawCylinder(document.getElementById('cyl-axis').value, v('cyl-c1'), v('cyl-c2'), v('cyl-radius'), v('cyl-hmin'), v('cyl-hmax'));
+        else if (type === 'sphere')   drawSphere(v('sph-cx'), v('sph-cy'), v('sph-cz'), v('sph-radius'));
+    }
+
+    function scheduleGeoUpdate() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(readGeoAndDraw, 1000);
+    }
+
+    function attachDebounce() {
+        document.querySelectorAll('.geo-input').forEach(input => input.addEventListener('input', scheduleGeoUpdate));
+        document.getElementById('geometry-select').addEventListener('change', () => { clearTimeout(debounceTimer); clearGeoMesh(); });
+        document.getElementById('cyl-axis')?.addEventListener('change', scheduleGeoUpdate);
+    }
+
+    // --------------------------------------------------------
+    // FORMULARIO
+    // --------------------------------------------------------
+    function enforceMinOne(changed) {
+        const boxes = document.querySelectorAll('.v-checkbox');
+        if ([...boxes].filter(b => b.checked).length === 0) {
+            changed.checked = true;
+            const w = document.getElementById('params-warning');
+            w.classList.remove('hidden');
+            setTimeout(() => w.classList.add('hidden'), 2500);
+        }
+    }
+
+    function toggleAtomSelection(value) {
+        const isSelection = value === 'selection';
+        document.getElementById('atom-selection-input').classList.toggle('hidden', !isSelection);
+        const sw = document.getElementById('sphere-autocenter');
+        const st = document.getElementById('autocenter-text');
+        sw.disabled = !isSelection;
+        st.classList.toggle('text-slate-400', isSelection);
+        st.classList.toggle('text-slate-600', !isSelection);
+        if (!isSelection && sw.checked) { sw.checked = false; toggleAutocenter(false); }
+    }
+
+    function switchGeometry(value) {
+        ['cube', 'cylinder', 'sphere'].forEach(id => document.getElementById('geo-' + id).classList.add('hidden'));
+        document.getElementById('geo-' + value).classList.remove('hidden');
+        clearGeoMesh();
+    }
+
+    function updateCylinderLabels(axis) {
+        const others = ['X', 'Y', 'Z'].filter(a => a !== axis);
+        document.getElementById('cyl-c1-label').textContent   = 'Centro ' + others[0];
+        document.getElementById('cyl-c2-label').textContent   = 'Centro ' + others[1];
+        document.getElementById('cyl-hmin-label').textContent = axis + ' mín';
+        document.getElementById('cyl-hmax-label').textContent = axis + ' máx';
+    }
+
+    function toggleAutocenter(enabled) {
+        document.querySelectorAll('.sphere-pos').forEach(input => { input.disabled = enabled; });
+    }
+
+    // --------------------------------------------------------
+    // API PUBLICA (accesible desde onclick en el HTML)
+    // --------------------------------------------------------
+    window.v4s = {
+        resetCamera, enforceMinOne, toggleAtomSelection,
+        switchGeometry, updateCylinderLabels, toggleAutocenter,
+    };
+
+    // --------------------------------------------------------
+    // PERSISTENCIA DE ESTADO DEL FORMULARIO
+    // --------------------------------------------------------
+    const FORM_IDS = [
+        'geometry-select', 'monolayer-select',
+        'cube-xmin', 'cube-xmax', 'cube-ymin', 'cube-ymax', 'cube-zmin', 'cube-zmax',
+        'cyl-axis', 'cyl-c1', 'cyl-c2', 'cyl-radius', 'cyl-hmin', 'cyl-hmax',
+        'sph-cx', 'sph-cy', 'sph-cz', 'sph-radius',
+        'sphere-autocenter',
+    ];
+    const CHECKBOX_NAMES = ['params'];
+    const RADIO_NAMES    = ['units'];
+
+    function saveFormState() {
+        const state = { inputs: {}, checkboxes: {}, radios: {} };
+        FORM_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            state.inputs[id] = el.type === 'checkbox' ? el.checked : el.value;
+        });
+        CHECKBOX_NAMES.forEach(name => {
+            state.checkboxes[name] = [...document.querySelectorAll(`input[name="${name}"]`)]
+                .filter(cb => cb.checked).map(cb => cb.value);
+        });
+        RADIO_NAMES.forEach(name => {
+            const checked = document.querySelector(`input[name="${name}"]:checked`);
+            state.radios[name] = checked ? checked.value : null;
+        });
+        window._v4sFormState = state;
+    }
+
+    function restoreFormState() {
+        const state = window._v4sFormState;
+        if (!state) return;
+
+        FORM_IDS.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el || !(id in state.inputs)) return;
+            if (el.type === 'checkbox') el.checked = state.inputs[id];
+            else el.value = state.inputs[id];
+        });
+        CHECKBOX_NAMES.forEach(name => {
+            const vals = state.checkboxes[name] || [];
+            document.querySelectorAll(`input[name="${name}"]`).forEach(cb => {
+                cb.checked = vals.includes(cb.value);
+            });
+        });
+        RADIO_NAMES.forEach(name => {
+            const val = state.radios[name];
+            if (val) {
+                const el = document.querySelector(`input[name="${name}"][value="${val}"]`);
+                if (el) el.checked = true;
+            }
+        });
+
+        // Restaurar visibilidad de paneles
+        const geo = document.getElementById('geometry-select')?.value;
+        if (geo) {
+            ['cube', 'cylinder', 'sphere'].forEach(id => document.getElementById('geo-' + id)?.classList.add('hidden'));
+            document.getElementById('geo-' + geo)?.classList.remove('hidden');
+        }
+        const mono = document.getElementById('monolayer-select')?.value;
+        if (mono) toggleAtomSelection(mono);
+
+        // Redibujar geometria
+        readGeoAndDraw();
+    }
+
+    // Guardar estado justo antes de que HTMX reemplace el contenido
+    document.body.addEventListener('htmx:beforeSwap', saveFormState);
+
+    // --------------------------------------------------------
+    // INIT
+    // --------------------------------------------------------
+    initThree();
+    setupControls();
+    attachDebounce();
+    restoreFormState();
+    if (SISTEMA_ID) loadSolute(SISTEMA_ID);
+
+})();
+</script>

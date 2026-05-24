@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}V4S-Orchestrator{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -103,15 +104,15 @@
                 </button>
 
                 <button
+                    id="nav-calculo-btn"
                     class="tab-btn flex items-center gap-2 px-4 py-3 font-mono text-xs font-medium
-                           text-slate-400 border-b-2 border-transparent
-                           hover:text-accent transition-colors duration-150 whitespace-nowrap"
-                    hx-get="/tabs/calculo"
-                    hx-target="#tab-content"
-                    hx-swap="innerHTML"
-                    onclick="setActive(this)"
+                           text-slate-600 border-b-2 border-transparent
+                           transition-colors duration-150 whitespace-nowrap
+                           cursor-not-allowed opacity-40"
+                    disabled
+                    onclick="window.navToCalculo(this)"
                 >
-                    <span class="tab-dot w-1.5 h-1.5 rounded-full bg-slate-600 transition-all duration-150"></span>
+                    <span class="tab-dot w-1.5 h-1.5 rounded-full bg-slate-700 transition-all duration-150"></span>
                     Cálculo
                 </button>
 
@@ -144,12 +145,32 @@
         </p>
     </footer>
 
+    <!-- Three.js: cargado globalmente para que los tabs lo encuentren disponible -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
     <script>
+        window._activeSistemaId = null;
+
         function setActive(el) {
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             el.classList.add('active');
+        }
+
+        function enableCalculoTab(sistemaId) {
+            window._activeSistemaId = sistemaId;
+            const btn = document.getElementById('nav-calculo-btn');
+            btn.disabled = false;
+            btn.classList.remove('cursor-not-allowed', 'opacity-40', 'text-slate-600');
+            btn.classList.add('hover:text-accent', 'text-slate-400');
+        }
+
+        function navToCalculo(el) {
+            if (!window._activeSistemaId) return;
+            setActive(el);
+            htmx.ajax('GET',
+                '/tabs/calculo?sistema=' + window._activeSistemaId,
+                '#tab-content'
+            );
         }
     </script>
 
