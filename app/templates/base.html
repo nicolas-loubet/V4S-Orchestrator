@@ -164,6 +164,15 @@
             btn.classList.add('hover:text-accent', 'text-slate-400');
         }
 
+        // Persistencia de estado del tab Calculo
+        document.body.addEventListener('htmx:beforeSwap', function(evt) {
+            if (evt.detail.target && evt.detail.target.id === 'tab-content') {
+                if (window.v4s && typeof window.v4s.saveFormState === 'function') {
+                    window.v4s.saveFormState();
+}
+            }
+        });
+
         function navToCalculo(el) {
             if (!window._activeSistemaId) return;
             setActive(el);

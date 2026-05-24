@@ -76,12 +76,16 @@
                     <option value="monolayer" selected>Monocapa completa</option>
                     <option value="selection">Moléculas más cercanas a una selección de átomos</option>
                 </select>
-                <div id="atom-selection-input" class="hidden space-y-1.5">
+                <div id="atom-selection-input" class="hidden space-y-2">
                     <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Selección de átomos</label>
-                    <input type="text" placeholder="ej. resname SOL and name OW"
+                    <input type="text" id="atom-selection-text"
+                           placeholder="ej: C1 C10 F5 N3 OH7"
                            class="w-full font-mono text-sm bg-surface-600 border border-border-dim
                                   text-slate-300 rounded-md px-3 py-2 placeholder-slate-600
-                                  focus:outline-none focus:border-accent/60 transition-colors" />
+                                  focus:outline-none focus:border-accent/60 transition-colors"
+                           oninput="window.v4s.scheduleAtomSelection(this.value)" />
+                    <div id="atom-selection-errors" class="space-y-1"></div>
+                    <p id="atom-selection-count" class="font-mono text-xs text-slate-500 hidden"></p>
                 </div>
             </div>
 
@@ -401,6 +405,17 @@
             if (!resp.ok) throw new Error(resp.statusText);
             const data = await resp.json();
             buildAtomMeshes(data.atoms);
+
+            const saved = window._v4sFormState;
+            if (saved) {
+                // Restaurar seleccion de atomos ahora que allAtoms esta cargado
+                const atomText = saved.inputs['atom-selection-text'] || '';
+                if (atomText) applyAtomSelection(atomText);
+                // Redibujar geometria con valores restaurados
+                readGeoAndDraw();
+            } else if (data.box) {
+                prefillBoxFromBounds(data.box);
+            }
         } catch (err) {
             console.error('[V4S]', err);
             document.getElementById('vp-no-system').style.display = 'flex';
@@ -409,34 +424,76 @@
         }
     }
 
+    function prefillBoxFromBounds(box) {
+        const set = (id, val) => {
+            const el = document.getElementById(id);
+            if (el) el.value = parseFloat(val.toFixed(3));
+        };
+        set('cube-xmin', box.xmin); set('cube-xmax', box.xmax);
+        set('cube-ymin', box.ymin); set('cube-ymax', box.ymax);
+        set('cube-zmin', box.zmin); set('cube-zmax', box.zmax);
+        // Dibujar el cubo inmediatamente
+        drawCube(box.xmin, box.xmax, box.ymin, box.ymax, box.zmin, box.zmax);
+    }
+
+    // Almacena todos los atomos cargados con su nombre para validacion
+    let allAtoms = [];
+    // Set de nombres seleccionados actualmente
+    let selectedAtomNames = new Set();
+
     function buildAtomMeshes(atoms) {
+        allAtoms = atoms;
         scene.children.filter(o => o.userData.isAtom).forEach(o => scene.remove(o));
 
-        // Calcular centroide solo para apuntar la camara, NO para mover atomos
         let cx = 0, cy = 0, cz = 0;
         atoms.forEach(a => { cx += a.x; cy += a.y; cz += a.z; });
         cx /= atoms.length; cy /= atoms.length; cz /= atoms.length;
 
-        // Radio maximo desde el centroide para ajustar zoom
         let maxR = 0;
         atoms.forEach(a => { const d = Math.sqrt((a.x-cx)**2+(a.y-cy)**2+(a.z-cz)**2); if (d > maxR) maxR = d; });
 
-        // Agrupar por simbolo usando coordenadas reales (sin restar centroide)
-        const bySymbol = {};
-        atoms.forEach(a => {
-            const s = a.s.charAt(0).toUpperCase();
-            (bySymbol[s] = bySymbol[s] || []).push({ x: a.x, y: a.y, z: a.z });
+        centroid = { x: cx, y: cy, z: cz };
+        atomCount = atoms.length;
+        spherical.radius = maxR * 2.2;
+        updateCamera();
+
+        renderAtoms();
+
+        const ac = document.getElementById('vp-atom-count');
+        ac.textContent = `${atomCount} átomos`;
+        ac.classList.remove('hidden');
+    }
+
+    function renderAtoms() {
+        // Eliminar meshes anteriores
+        scene.children.filter(o => o.userData.isAtom).forEach(o => scene.remove(o));
+
+        const hasSelection = selectedAtomNames.size > 0;
+        const sphereGeo    = new THREE.SphereGeometry(1, 10, 8);
+        const dummy        = new THREE.Object3D();
+
+        // Separar atomos en dos grupos: seleccionados y no seleccionados
+        const groups = { selected: {}, unselected: {} };
+
+        allAtoms.forEach(a => {
+            const sym      = a.s.charAt(0).toUpperCase();
+            const isSel    = hasSelection && selectedAtomNames.has(a.n);
+            const bucket   = (!hasSelection || isSel) ? 'selected' : 'unselected';
+            const key      = sym;
+            (groups[bucket][key] = groups[bucket][key] || []).push(a);
         });
 
-        const sphereGeo = new THREE.SphereGeometry(1, 10, 8);
-        const dummy     = new THREE.Object3D();
-
-        Object.entries(bySymbol).forEach(([sym, positions]) => {
-            const mat  = new THREE.MeshPhongMaterial({ color: CPK[sym] ?? CPK.default, shininess: 60 });
-            const mesh = new THREE.InstancedMesh(sphereGeo, mat, positions.length);
+        // Renderizar grupo normal (opaco)
+        Object.entries(groups.selected).forEach(([sym, atoms]) => {
+            const mat  = new THREE.MeshPhongMaterial({
+                color: CPK[sym] ?? CPK.default,
+                shininess: 60,
+                transparent: false,
+            });
+            const mesh = new THREE.InstancedMesh(sphereGeo, mat, atoms.length);
             mesh.userData.isAtom = true;
-            positions.forEach((p, i) => {
-                dummy.position.set(p.x, p.y, p.z);
+            atoms.forEach((a, i) => {
+                dummy.position.set(a.x, a.y, a.z);
                 dummy.scale.setScalar(VDW_R[sym] ?? VDW_R.default);
                 dummy.updateMatrix();
                 mesh.setMatrixAt(i, dummy.matrix);
@@ -445,15 +502,71 @@
             scene.add(mesh);
         });
 
-        // Guardar centroide para que la camara orbite alrededor de el
-        centroid = { x: cx, y: cy, z: cz };
-        atomCount = atoms.length;
-        spherical.radius = maxR * 2.2;
-        updateCamera();
+        // Renderizar grupo atenuado (transparente)
+        Object.entries(groups.unselected).forEach(([sym, atoms]) => {
+            const mat  = new THREE.MeshPhongMaterial({
+                color: CPK[sym] ?? CPK.default,
+                shininess: 20,
+                transparent: true,
+                opacity: 0.15,
+            });
+            const mesh = new THREE.InstancedMesh(sphereGeo, mat, atoms.length);
+            mesh.userData.isAtom = true;
+            atoms.forEach((a, i) => {
+                dummy.position.set(a.x, a.y, a.z);
+                dummy.scale.setScalar(VDW_R[sym] ?? VDW_R.default);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+            scene.add(mesh);
+        });
+    }
 
-        const ac = document.getElementById('vp-atom-count');
-        ac.textContent = `${atomCount} átomos`;
-        ac.classList.remove('hidden');
+    // --------------------------------------------------------
+    // VALIDACION Y SELECCION DE ATOMOS
+    // --------------------------------------------------------
+    let atomSelectionTimer = null;
+
+    function scheduleAtomSelection(value) {
+        clearTimeout(atomSelectionTimer);
+        atomSelectionTimer = setTimeout(() => applyAtomSelection(value), 800);
+    }
+
+    function applyAtomSelection(value) {
+        const errorsEl = document.getElementById('atom-selection-errors');
+        const countEl  = document.getElementById('atom-selection-count');
+        errorsEl.innerHTML = '';
+        countEl.classList.add('hidden');
+
+        const names    = value.trim().split(/\s+/).filter(Boolean);
+        const knownNames = new Set(allAtoms.map(a => a.n));
+
+        if (names.length === 0) {
+            selectedAtomNames = new Set();
+            renderAtoms();
+            return;
+        }
+
+        const unknown  = names.filter(n => !knownNames.has(n));
+        const valid    = names.filter(n =>  knownNames.has(n));
+
+        unknown.forEach(name => {
+            const el = document.createElement('p');
+            el.className = 'font-mono text-xs text-red-400';
+            el.textContent = `Átomo no reconocido: ${name}`;
+            errorsEl.appendChild(el);
+        });
+
+        selectedAtomNames = new Set(valid);
+        renderAtoms();
+
+        if (valid.length > 0) {
+            countEl.textContent = `${valid.length} átomo${valid.length > 1 ? 's' : ''} seleccionado${valid.length > 1 ? 's' : ''}`;
+            countEl.classList.remove('hidden');
+        }
+        // Redibujar geometria si el autocentrado esta activo
+        if (document.getElementById('sphere-autocenter')?.checked) readGeoAndDraw();
     }
 
     // --------------------------------------------------------
@@ -505,12 +618,40 @@
         showGeoIndicator('Esfera');
     }
 
+    function drawAutocenteredSpheres(radius) {
+        clearGeoMesh();
+        if (radius <= 0 || selectedAtomNames.size === 0) return;
+
+        const mat     = new THREE.MeshBasicMaterial({ color: 0x38bdf8, wireframe: true });
+        const sphereG = new THREE.SphereGeometry(radius, 24, 16);
+        const group   = new THREE.Group();
+
+        allAtoms
+            .filter(a => selectedAtomNames.has(a.n))
+            .forEach(a => {
+                const mesh = new THREE.Mesh(sphereG, mat);
+                mesh.position.set(a.x, a.y, a.z);
+                group.add(mesh);
+            });
+
+        geoMesh = group;
+        scene.add(geoMesh);
+        showGeoIndicator(`Esferas (×${group.children.length})`);
+    }
+
     function readGeoAndDraw() {
-        const type = document.getElementById('geometry-select').value;
-        const v    = id => parseFloat(document.getElementById(id)?.value) || 0;
-        if      (type === 'cube')     drawCube(v('cube-xmin'), v('cube-xmax'), v('cube-ymin'), v('cube-ymax'), v('cube-zmin'), v('cube-zmax'));
-        else if (type === 'cylinder') drawCylinder(document.getElementById('cyl-axis').value, v('cyl-c1'), v('cyl-c2'), v('cyl-radius'), v('cyl-hmin'), v('cyl-hmax'));
-        else if (type === 'sphere')   drawSphere(v('sph-cx'), v('sph-cy'), v('sph-cz'), v('sph-radius'));
+        const type       = document.getElementById('geometry-select').value;
+        const v          = id => parseFloat(document.getElementById(id)?.value) || 0;
+        const autocenter = document.getElementById('sphere-autocenter')?.checked;
+
+        if (type === 'cube') {
+            drawCube(v('cube-xmin'), v('cube-xmax'), v('cube-ymin'), v('cube-ymax'), v('cube-zmin'), v('cube-zmax'));
+        } else if (type === 'cylinder') {
+            drawCylinder(document.getElementById('cyl-axis').value, v('cyl-c1'), v('cyl-c2'), v('cyl-radius'), v('cyl-hmin'), v('cyl-hmax'));
+        } else if (type === 'sphere') {
+            if (autocenter) drawAutocenteredSpheres(v('sph-radius'));
+            else            drawSphere(v('sph-cx'), v('sph-cy'), v('sph-cz'), v('sph-radius'));
+        }
     }
 
     function scheduleGeoUpdate() {
@@ -564,6 +705,7 @@
 
     function toggleAutocenter(enabled) {
         document.querySelectorAll('.sphere-pos').forEach(input => { input.disabled = enabled; });
+        readGeoAndDraw();
     }
 
     // --------------------------------------------------------
@@ -572,6 +714,7 @@
     window.v4s = {
         resetCamera, enforceMinOne, toggleAtomSelection,
         switchGeometry, updateCylinderLabels, toggleAutocenter,
+        scheduleAtomSelection, saveFormState,
     };
 
     // --------------------------------------------------------
@@ -582,12 +725,16 @@
         'cube-xmin', 'cube-xmax', 'cube-ymin', 'cube-ymax', 'cube-zmin', 'cube-zmax',
         'cyl-axis', 'cyl-c1', 'cyl-c2', 'cyl-radius', 'cyl-hmin', 'cyl-hmax',
         'sph-cx', 'sph-cy', 'sph-cz', 'sph-radius',
-        'sphere-autocenter',
+        'sphere-autocenter', 'atom-selection-text',
     ];
     const CHECKBOX_NAMES = ['params'];
     const RADIO_NAMES    = ['units'];
 
     function saveFormState() {
+        // Verificar que el formulario de calculo esta realmente en el DOM
+        if (!document.getElementById('geometry-select')) {
+                return;
+        }
         const state = { inputs: {}, checkboxes: {}, radios: {} };
         FORM_IDS.forEach(id => {
             const el = document.getElementById(id);
@@ -638,12 +785,9 @@
         const mono = document.getElementById('monolayer-select')?.value;
         if (mono) toggleAtomSelection(mono);
 
-        // Redibujar geometria
+        // Redibujar geometria (sin atomos, solo la figura)
         readGeoAndDraw();
     }
-
-    // Guardar estado justo antes de que HTMX reemplace el contenido
-    document.body.addEventListener('htmx:beforeSwap', saveFormState);
 
     // --------------------------------------------------------
     // INIT
