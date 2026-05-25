@@ -46,3 +46,7 @@ data/resultados/*
 
 # === Notas de desarrollo ===
 notas/
+
+# === Compilados y comunicación ===
+build/
+scheduled-runs/

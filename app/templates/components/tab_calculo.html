@@ -210,9 +210,46 @@
         </div>
     </div>
 
+    <!-- Seccion: Modo de salida -->
+    <div class="rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-4">
+        <p class="font-mono text-xs text-accent uppercase tracking-widest">Modo de salida</p>
+        <div class="grid grid-cols-2 gap-3">
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <input type="radio" name="output_mode" value="mean" checked
+                       class="w-4 h-4 accent-sky-400 cursor-pointer" />
+                <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">
+                    Valores medios
+                </span>
+            </label>
+            <label class="flex items-center gap-3 cursor-pointer group">
+                <input type="radio" name="output_mode" value="time_series"
+                       class="w-4 h-4 accent-sky-400 cursor-pointer" />
+                <span class="font-mono text-sm text-slate-300 group-hover:text-accent transition-colors">
+                    Serie temporal
+                </span>
+            </label>
+        </div>
+        <label class="flex items-center gap-3 cursor-pointer group">
+            <div class="relative inline-flex items-center">
+                <input type="checkbox" id="save-mol-count" class="sr-only peer" />
+                <div class="w-9 h-5 bg-surface-600 border border-border-dim rounded-full
+                            peer-checked:bg-accent/30 peer-checked:border-accent/60
+                            transition-colors duration-150"></div>
+                <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-slate-500 rounded-full
+                            peer-checked:translate-x-4 peer-checked:bg-accent
+                            transition-all duration-150"></div>
+            </div>
+            <span class="font-mono text-xs text-slate-400 group-hover:text-slate-300 transition-colors">
+                Guardar número de moléculas
+            </span>
+        </label>
+    </div>
+
     <!-- Boton ejecutar -->
-    <div class="flex justify-end pt-2 border-t border-border-dim">
+    <div class="flex items-center justify-end gap-4 pt-2 border-t border-border-dim">
+        <p id="run-status" class="font-mono text-xs text-slate-500 hidden"></p>
         <button id="run-btn"
+                onclick="window.v4s.ejecutarCalculo()"
                 class="font-mono text-xs px-6 py-2.5 rounded-md
                        bg-accent/10 border border-accent/40 text-accent
                        hover:bg-accent/20 hover:border-accent/70
@@ -711,10 +748,65 @@
     // --------------------------------------------------------
     // API PUBLICA (accesible desde onclick en el HTML)
     // --------------------------------------------------------
+    async function ejecutarCalculo() {
+        const btn      = document.getElementById('run-btn');
+        const statusEl = document.getElementById('run-status');
+        btn.disabled   = true;
+        statusEl.textContent = 'Programando...';
+        statusEl.classList.remove('hidden', 'text-red-400');
+        statusEl.classList.add('text-slate-500');
+
+        const geo  = document.getElementById('geometry-select').value;
+        const v    = id => parseFloat(document.getElementById(id)?.value) || 0;
+        const vStr = id => document.getElementById(id)?.value || '';
+
+        const payload = {
+            sistema_id:     SISTEMA_ID,
+            params:         [...document.querySelectorAll('.v-checkbox:checked')].map(cb => cb.value),
+            units:          document.querySelector('input[name="units"]:checked')?.value || 'kJ/mol',
+            output_mode:    document.querySelector('input[name="output_mode"]:checked')?.value || 'mean',
+            save_mol_count: document.getElementById('save-mol-count')?.checked || false,
+            scope:          document.getElementById('monolayer-select')?.value || 'all',
+            atom_selection: vStr('atom-selection-text'),
+            geometry:       geo,
+            // Cubo
+            cube_xmin: v('cube-xmin'), cube_xmax: v('cube-xmax'),
+            cube_ymin: v('cube-ymin'), cube_ymax: v('cube-ymax'),
+            cube_zmin: v('cube-zmin'), cube_zmax: v('cube-zmax'),
+            // Cilindro
+            cyl_axis:   document.getElementById('cyl-axis')?.value || 'Z',
+            cyl_c1:     v('cyl-c1'),     cyl_c2:     v('cyl-c2'),
+            cyl_radius: v('cyl-radius'), cyl_hmin:   v('cyl-hmin'), cyl_hmax: v('cyl-hmax'),
+            // Esfera
+            sph_cx: v('sph-cx'), sph_cy: v('sph-cy'), sph_cz: v('sph-cz'),
+            sph_radius:     v('sph-radius'),
+            sph_autocenter: document.getElementById('sphere-autocenter')?.checked || false,
+        };
+
+        try {
+            const resp = await fetch('/api/run', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!resp.ok) throw new Error(data.detail || 'Error desconocido');
+            statusEl.textContent = `run-${data.run_number} programado`;
+            statusEl.classList.remove('text-slate-500');
+            statusEl.classList.add('text-accent/80');
+        } catch (err) {
+            statusEl.textContent = `Error: ${err.message}`;
+            statusEl.classList.remove('text-slate-500');
+            statusEl.classList.add('text-red-400');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     window.v4s = {
         resetCamera, enforceMinOne, toggleAtomSelection,
         switchGeometry, updateCylinderLabels, toggleAutocenter,
-        scheduleAtomSelection, saveFormState,
+        scheduleAtomSelection, saveFormState, ejecutarCalculo,
     };
 
     // --------------------------------------------------------
@@ -725,10 +817,10 @@
         'cube-xmin', 'cube-xmax', 'cube-ymin', 'cube-ymax', 'cube-zmin', 'cube-zmax',
         'cyl-axis', 'cyl-c1', 'cyl-c2', 'cyl-radius', 'cyl-hmin', 'cyl-hmax',
         'sph-cx', 'sph-cy', 'sph-cz', 'sph-radius',
-        'sphere-autocenter', 'atom-selection-text',
+        'sphere-autocenter', 'atom-selection-text', 'save-mol-count',
     ];
     const CHECKBOX_NAMES = ['params'];
-    const RADIO_NAMES    = ['units'];
+    const RADIO_NAMES    = ['units', 'output_mode'];
 
     function saveFormState() {
         // Verificar que el formulario de calculo esta realmente en el DOM

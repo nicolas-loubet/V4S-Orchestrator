@@ -1,5 +1,8 @@
 import json
+import tomli_w
 import uvicorn
+from datetime import datetime, timezone
+from fastapi import Body
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -133,7 +136,7 @@ def _render(template_name: str, request: Request, context: dict | None = None) -
     ctx = {"request": request}
     if context:
         ctx.update(context)
-    return templates.TemplateResponse(template_name, ctx)
+    return templates.TemplateResponse(request=ctx['request'], name=template_name, context={k: v for k, v in ctx.items() if k != 'request'})
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +229,98 @@ async def get_solute(sistema_id: str):
             "z": float(parts[4]),
         })
     return {"atoms": atoms, "box": box}
+
+
+# ---------------------------------------------------------------------------
+# API: programar calculo
+# ---------------------------------------------------------------------------
+
+RUNS_DIR = BASE_DIR / "scheduled-runs"
+
+
+def _next_run_path() -> tuple[int, Path]:
+    """Devuelve (numero, path) para el proximo run-N.toml, thread-safe."""
+    RUNS_DIR.mkdir(exist_ok=True)
+    existing = sorted(RUNS_DIR.glob("run-*.toml"))
+    if not existing:
+        return 1, RUNS_DIR / "run-1.toml"
+    last = int(existing[-1].stem.split("-")[1])
+    n    = last + 1
+    # Crear el archivo vacio para reservar el numero antes de escribir
+    path = RUNS_DIR / f"run-{n}.toml"
+    path.touch()
+    return n, path
+
+
+def _build_run_toml(n: int, sistema_id: str, data: dict) -> dict:
+    geo = data.get("geometry", "cube")
+
+    geometry: dict = {"type": geo}
+    if geo == "cube":
+        geometry.update({
+            "xmin": data.get("cube_xmin", 0.0), "xmax": data.get("cube_xmax", 0.0),
+            "ymin": data.get("cube_ymin", 0.0), "ymax": data.get("cube_ymax", 0.0),
+            "zmin": data.get("cube_zmin", 0.0), "zmax": data.get("cube_zmax", 0.0),
+        })
+    elif geo == "cylinder":
+        geometry.update({
+            "axis":   data.get("cyl_axis", "Z"),
+            "c1":     data.get("cyl_c1",     0.0),
+            "c2":     data.get("cyl_c2",     0.0),
+            "radius": data.get("cyl_radius", 0.0),
+            "hmin":   data.get("cyl_hmin",   0.0),
+            "hmax":   data.get("cyl_hmax",   0.0),
+        })
+    elif geo == "sphere":
+        geometry.update({
+            "cx":         data.get("sph_cx",         0.0),
+            "cy":         data.get("sph_cy",         0.0),
+            "cz":         data.get("sph_cz",         0.0),
+            "radius":     data.get("sph_radius",     0.0),
+            "autocenter": data.get("sph_autocenter", False),
+        })
+
+    return {
+        "meta": {
+            "run_id":       f"run-{n}",
+            "sistema_id":   sistema_id,
+            "sistema_path": str(DATA_PATH / sistema_id),
+            "created_at":   datetime.now(timezone.utc).isoformat(),
+        },
+        "parametros": {
+            "params":          data.get("params", []),
+            "units":           data.get("units", "kJ/mol"),
+            "output_mode":     data.get("output_mode", "mean"),
+            "save_mol_count":  data.get("save_mol_count", False),
+        },
+        "agregacion": {
+            "scope":          data.get("scope", "all"),
+            "atom_selection": data.get("atom_selection", ""),
+        },
+        "geometria": geometry,
+    }
+
+
+@app.post("/api/run", response_class=JSONResponse)
+async def schedule_run(data: dict = Body(...)):
+    sistema_id = data.get("sistema_id", "")
+    if not sistema_id:
+        return JSONResponse({"detail": "sistema_id requerido"}, status_code=400)
+    if not (DATA_PATH / sistema_id).is_dir():
+        return JSONResponse({"detail": f"Sistema no encontrado: {sistema_id}"}, status_code=404)
+
+    n, path = _next_run_path()
+    doc     = _build_run_toml(n, sistema_id, data)
+
+    try:
+        with open(path, "wb") as f:
+            tomli_w.dump(doc, f)
+    except Exception as e:
+        path.unlink(missing_ok=True)
+        return JSONResponse({"detail": f"Error escribiendo TOML: {e}"}, status_code=500)
+
+    print(f"[V4S] {path.name} programado para sistema '{sistema_id}'")
+    return {"run_number": n, "run_id": f"run-{n}", "path": str(path)}
 
 
 @app.get("/tabs/visualizacion", response_class=HTMLResponse)
