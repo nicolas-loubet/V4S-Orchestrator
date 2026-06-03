@@ -1,7 +1,7 @@
 CXX      = g++
-CXXFLAGS = -std=c++17 -O2 -Wall -Wextra
+CXXFLAGS = -std=c++17 -O3
 TARGET   = build/v4s
-SRC      = src/v4s.cpp
+SRC      = src/main.cpp
 
 .PHONY: all clean
 
