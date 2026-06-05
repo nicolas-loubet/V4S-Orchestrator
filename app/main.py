@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 import tomli_w
 import uvicorn
 from datetime import datetime, timezone
@@ -235,21 +237,22 @@ async def get_solute(sistema_id: str):
 # API: programar calculo
 # ---------------------------------------------------------------------------
 
-RUNS_DIR = BASE_DIR / "scheduled-runs"
+RUNS_DIR   = BASE_DIR / "scheduled-runs"
+ENGINE_BIN = BASE_DIR / "engine" / "build" / "v4s"
 
 
-def _next_run_path() -> tuple[int, Path]:
-    """Devuelve (numero, path) para el proximo run-N.toml, thread-safe."""
+def _next_run_dir() -> tuple[int, Path]:
+    """Devuelve (numero, carpeta) para el proximo run-N, thread-safe."""
     RUNS_DIR.mkdir(exist_ok=True)
-    existing = sorted(RUNS_DIR.glob("run-*.toml"))
-    if not existing:
-        return 1, RUNS_DIR / "run-1.toml"
-    last = int(existing[-1].stem.split("-")[1])
-    n    = last + 1
-    # Crear el archivo vacio para reservar el numero antes de escribir
-    path = RUNS_DIR / f"run-{n}.toml"
-    path.touch()
-    return n, path
+    existing = sorted(
+        [d for d in RUNS_DIR.iterdir() if d.is_dir() and d.name.startswith("run-")],
+        key=lambda d: int(d.name.split("-")[1])
+    )
+    n = (int(existing[-1].name.split("-")[1]) + 1) if existing else 1
+    run_dir = RUNS_DIR / f"run-{n}"
+    run_dir.mkdir()
+    (run_dir / "results").mkdir()
+    return n, run_dir
 
 
 def _build_run_toml(n: int, sistema_id: str, data: dict) -> dict:
@@ -309,18 +312,230 @@ async def schedule_run(data: dict = Body(...)):
     if not (DATA_PATH / sistema_id).is_dir():
         return JSONResponse({"detail": f"Sistema no encontrado: {sistema_id}"}, status_code=404)
 
-    n, path = _next_run_path()
-    doc     = _build_run_toml(n, sistema_id, data)
+    n, run_dir = _next_run_dir()
+    run_toml   = run_dir / "run.toml"
+    doc        = _build_run_toml(n, sistema_id, data)
+
+    # Escribir status inicial
+    status_doc = {
+        "status": {
+            "state":    "pending",
+            "progress": 0.0,
+            "eta_sec":  0,
+            "pid":      0,
+            "message":  "En cola",
+        }
+    }
 
     try:
-        with open(path, "wb") as f:
+        with open(run_toml, "wb") as f:
             tomli_w.dump(doc, f)
+        with open(run_dir / "status.toml", "wb") as f:
+            tomli_w.dump(status_doc, f)
     except Exception as e:
-        path.unlink(missing_ok=True)
+        import shutil
+        shutil.rmtree(run_dir, ignore_errors=True)
         return JSONResponse({"detail": f"Error escribiendo TOML: {e}"}, status_code=500)
 
-    print(f"[V4S] {path.name} programado para sistema '{sistema_id}'")
-    return {"run_number": n, "run_id": f"run-{n}", "path": str(path)}
+    # Lanzar el motor C++ como proceso en background
+    pid = 0
+    if ENGINE_BIN.exists():
+        try:
+            log_path = run_dir / "v4s.log"
+            proc = subprocess.Popen(
+                [str(ENGINE_BIN), str(run_dir)],
+                stdout=open(log_path, "w"),
+                stderr=subprocess.STDOUT,
+                start_new_session=True,   # equivalente a nohup
+            )
+            pid = proc.pid
+            # Actualizar status con el PID real
+            with open(run_dir / "status.toml", "wb") as f:
+                tomli_w.dump({
+                    "status": {
+                        "state":    "running",
+                        "progress": 0.0,
+                        "eta_sec":  0,
+                        "pid":      pid,
+                        "message":  "Iniciando",
+                    }
+                }, f)
+            print(f"[V4S] run-{n} lanzado con PID {pid}")
+        except Exception as e:
+            print(f"[V4S] Error lanzando motor: {e}")
+    else:
+        print(f"[V4S] run-{n} programado (motor no compilado en {ENGINE_BIN})")
+
+    return {"run_number": n, "run_id": f"run-{n}", "pid": pid, "path": str(run_dir)}
+
+
+@app.get("/api/run/{n}/meta", response_class=JSONResponse)
+async def get_run_meta(n: int):
+    """Devuelve los parametros clave del run.toml para que el frontend sepa qué tipo de output esperar."""
+    run_toml = RUNS_DIR / f"run-{n}" / "run.toml"
+    if not run_toml.exists():
+        return JSONResponse({"detail": "Run no encontrado"}, status_code=404)
+    with open(run_toml, "rb") as f:
+        doc = tomllib.load(f)
+
+    output_mode = doc.get("parametros", {}).get("output_mode", "mean")
+    scope       = doc.get("agregacion", {}).get("scope", "all")
+    params      = doc.get("parametros", {}).get("params", [])
+    save_n      = doc.get("parametros", {}).get("save_mol_count", False)
+    atom_sel    = doc.get("agregacion", {}).get("atom_selection", "")
+    atoms       = [a.strip() for a in atom_sel.split() if a.strip()] if atom_sel else []
+
+    # Determinar tipo de output
+    is_atoms = (scope == "selection" and len(atoms) > 0)
+    if output_mode == "mean" and not is_atoms:
+        output_type = "mean_simple"
+    elif output_mode == "mean" and is_atoms:
+        output_type = "mean_atoms"
+    elif output_mode == "time_series" and not is_atoms:
+        output_type = "time_simple"
+    else:
+        output_type = "time_atoms"
+
+    return {
+        "output_type": output_type,
+        "params":      params,
+        "atoms":       atoms,
+        "save_n":      save_n,
+        "output_mode": output_mode,
+        "scope":       scope,
+    }
+
+
+@app.get("/api/run/{n}/status", response_class=JSONResponse)
+async def get_run_status(n: int):
+    run_dir    = RUNS_DIR / f"run-{n}"
+    status_file = run_dir / "status.toml"
+    if not status_file.exists():
+        return JSONResponse({"detail": "Run no encontrado"}, status_code=404)
+    with open(status_file, "rb") as f:
+        data = tomllib.load(f)
+    return data
+
+
+@app.get("/api/run/{n}/results", response_class=JSONResponse)
+async def get_run_results(n: int):
+    run_dir     = RUNS_DIR / f"run-{n}"
+    results_dir = run_dir / "results"
+    if not results_dir.exists():
+        return JSONResponse({"detail": "Run no encontrado"}, status_code=404)
+    files = [f.name for f in sorted(results_dir.glob("*.csv"))]
+    return {"files": files}
+
+
+@app.get("/api/run/{n}/csv/{filename}", response_class=JSONResponse)
+async def get_run_csv(n: int, filename: str):
+    import csv
+    run_dir  = RUNS_DIR / f"run-{n}"
+    # Buscar con y sin prefijo results/
+    csv_path = run_dir / "results" / filename
+    if not csv_path.exists():
+        csv_path = run_dir / filename
+    if not csv_path.exists() or csv_path.suffix != ".csv":
+        return JSONResponse({"detail": "Archivo no encontrado"}, status_code=404)
+    rows = []
+    with open(csv_path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            rows.append(row)
+    return {"filename": filename, "rows": rows}
+
+
+@app.post("/api/run/execute", response_class=JSONResponse)
+async def execute_code(payload: dict = Body(...)):
+    """
+    Ejecuta codigo Python del usuario en un namespace restringido.
+    Recibe: { code: str, data: { filename: [rows] } }
+    Devuelve: { figure_b64, stdout, error }
+    """
+    import io
+    import sys
+    import base64
+    import traceback
+    import pandas as pd
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    code = payload.get("code", "")
+    raw  = payload.get("data", {})  # { filename: [ {col: val, ...}, ... ] }
+
+    # Convertir cada CSV a DataFrame con tipos inferidos
+    data: dict[str, pd.DataFrame] = {}
+    for fname, rows in raw.items():
+        if rows:
+            df = pd.DataFrame(rows)
+            # Intentar convertir columnas numericas automaticamente
+            for col in df.columns:
+                try:
+                    df[col] = pd.to_numeric(df[col])
+                except (ValueError, TypeError):
+                    pass
+            data[fname] = df
+
+    safe_builtins = {
+        k: __builtins__[k] if isinstance(__builtins__, dict) else getattr(__builtins__, k)
+        for k in ("print", "range", "len", "list", "dict", "tuple", "set",
+                  "int", "float", "str", "bool", "min", "max", "sum",
+                  "sorted", "enumerate", "zip", "map", "filter", "abs", "round")
+        if (isinstance(__builtins__, dict) and k in __builtins__)
+           or hasattr(__builtins__, k)
+    }
+
+    namespace = {
+        "__builtins__": safe_builtins,
+        "plt":          plt,
+        "pd":           pd,
+        "np":           np,
+        "data":         data,
+    }
+
+    stdout_capture = io.StringIO()
+    old_stdout = sys.stdout
+    sys.stdout  = stdout_capture
+
+    try:
+        plt.rcParams.update({
+            'figure.facecolor':  '#0f1520',
+            'axes.facecolor':    '#0f1520',
+            'axes.edgecolor':    '#1e2d45',
+            'axes.labelcolor':   '#94a3b8',
+            'axes.titlecolor':   '#cbd5e1',
+            'xtick.color':       '#64748b',
+            'ytick.color':       '#64748b',
+            'grid.color':        '#1e2d45',
+            'grid.linestyle':    '--',
+            'grid.alpha':        0.6,
+            'text.color':        '#cbd5e1',
+            'legend.facecolor':  '#0f1520',
+            'legend.edgecolor':  '#1e2d45',
+            'legend.labelcolor': '#94a3b8',
+        })
+        plt.figure(figsize=(8, 4.5))
+        exec(compile(code, "<user>", "exec"), namespace)
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=120, bbox_inches="tight",
+                    facecolor="#0a0e17", edgecolor="none")
+        buf.seek(0)
+        fig_b64 = base64.b64encode(buf.read()).decode()
+        plt.close("all")
+        sys.stdout = old_stdout
+        out = stdout_capture.getvalue()
+        return {"figure_b64": fig_b64, "stdout": out}
+    except Exception:
+        plt.close("all")
+        sys.stdout = old_stdout
+        err = traceback.format_exc()
+        err = "\n".join(
+            l for l in err.splitlines()
+            if "<frozen" not in l and "site-packages" not in l
+        )
+        return {"error": err}
 
 
 @app.get("/tabs/visualizacion", response_class=HTMLResponse)

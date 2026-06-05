@@ -791,7 +791,8 @@
             });
             const data = await resp.json();
             if (!resp.ok) throw new Error(data.detail || 'Error desconocido');
-            statusEl.textContent = `run-${data.run_number} programado`;
+            const pid = data.pid ? ` · PID ${data.pid}` : '';
+            statusEl.textContent = `run-${data.run_number} lanzado${pid}`;
             statusEl.classList.remove('text-slate-500');
             statusEl.classList.add('text-accent/80');
         } catch (err) {

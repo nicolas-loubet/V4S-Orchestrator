@@ -1,12 +1,680 @@
-<div class="space-y-4">
+<div class="space-y-5">
 
+    <!-- Header -->
     <div class="border-b border-border-dim pb-4">
         <h2 class="font-mono text-lg font-bold text-accent tracking-wide">Visualización</h2>
-        <p class="text-slate-500 text-sm mt-0.5">Resultados gráficos y análisis de trayectorias.</p>
+        <p class="text-slate-500 text-sm mt-0.5">Resultados y análisis de cálculos completados.</p>
     </div>
 
-    <div class="rounded-lg border border-border-dim bg-surface-700/30 px-6 py-10 text-center">
-        <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">Contenido en construcción</p>
+    <!-- Selector de run -->
+    <div class="rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-3">
+        <p class="font-mono text-xs text-accent uppercase tracking-widest">Seleccionar cálculo</p>
+        <div class="flex gap-3 items-end">
+            <div class="flex-1 space-y-1.5">
+                <label class="font-mono text-xs text-slate-500">Número de run</label>
+                <input type="number" id="run-number-input" min="1" placeholder="ej: 1"
+                       class="run-num-input w-full font-mono text-sm bg-surface-600 border border-border-dim
+                              text-slate-300 rounded-md px-3 py-2 placeholder-slate-600
+                              focus:outline-none focus:border-accent/60 transition-colors" />
+            </div>
+            <button onclick="window.viz.loadRun()"
+                    class="font-mono text-xs px-5 py-2 rounded-md
+                           bg-accent/10 border border-accent/40 text-accent
+                           hover:bg-accent/20 hover:border-accent/70 transition-all duration-150">
+                Cargar
+            </button>
+        </div>
+    </div>
+
+    <!-- Panel de estado del run -->
+    <div id="run-status-panel" class="hidden rounded-lg border border-border-dim bg-surface-700/40 p-5 space-y-3">
+        <div class="flex items-center justify-between">
+            <p class="font-mono text-xs text-accent uppercase tracking-widest" id="run-status-title">Estado</p>
+            <span id="run-status-badge"
+                  class="font-mono text-xs px-2 py-0.5 rounded border border-border-dim text-slate-400"></span>
+        </div>
+        <p class="font-mono text-xs text-slate-400" id="run-status-message"></p>
+        <div id="run-progress-container" class="hidden space-y-1.5">
+            <div class="w-full bg-surface-600 rounded-full h-1.5 border border-border-dim overflow-hidden">
+                <div id="run-progress-bar"
+                     class="h-full bg-accent/70 rounded-full transition-all duration-500"
+                     style="width: 0%"></div>
+            </div>
+            <p class="font-mono text-xs text-slate-600" id="run-eta"></p>
+        </div>
+        <div id="run-files-container" class="hidden space-y-2">
+            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">Archivos generados</p>
+            <div id="run-files-list" class="flex flex-wrap gap-2"></div>
+        </div>
+    </div>
+
+    <!-- Seccion graficar (solo visible cuando hay run done) -->
+    <div id="viz-panel" class="hidden space-y-4">
+
+        <!-- Encabezado con switch modo avanzado -->
+        <div class="flex items-center justify-between border-b border-border-dim pb-3">
+            <p class="font-mono text-sm font-bold text-accent tracking-wide">Graficar</p>
+            <label class="flex items-center gap-2 cursor-pointer group">
+                <span class="font-mono text-xs text-slate-500 group-hover:text-slate-400 transition-colors">
+                    Modo avanzado
+                </span>
+                <div class="relative inline-flex items-center">
+                    <input type="checkbox" id="dev-mode-switch" class="sr-only peer"
+                           onchange="window.viz.toggleDevMode(this.checked)" />
+                    <div class="w-9 h-5 bg-surface-600 border border-border-dim rounded-full
+                                peer-checked:bg-accent/30 peer-checked:border-accent/60
+                                transition-colors duration-150"></div>
+                    <div class="absolute left-0.5 top-0.5 w-4 h-4 bg-slate-500 rounded-full
+                                peer-checked:translate-x-4 peer-checked:bg-accent
+                                transition-all duration-150"></div>
+                </div>
+            </label>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+            <!-- Columna izquierda: controles -->
+            <div class="space-y-4">
+
+                <!-- Selector CSV -->
+                <div id="csv-select-container" class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Archivo de datos</label>
+                    <select id="csv-select"
+                            class="w-full font-mono text-sm bg-surface-600 border border-border-dim
+                                   text-slate-300 rounded-md px-3 py-2
+                                   focus:outline-none focus:border-accent/60 transition-colors"
+                            onchange="window.viz.onCSVSelect(this.value)">
+                        <option value="">— Elegir archivo —</option>
+                    </select>
+                </div>
+
+                <!-- Modo simple -->
+                <div id="simple-mode-panel" class="space-y-4">
+
+                    <!-- Caso 1: mean_simple — tabla de resultados -->
+                    <div id="sm-mean-simple" class="hidden space-y-3">
+                        <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">Resultados</p>
+                        <div class="overflow-x-auto rounded-lg border border-border-dim">
+                            <table class="w-full font-mono text-xs">
+                                <thead>
+                                    <tr class="border-b border-border-dim bg-surface-800/60">
+                                        <th class="text-left px-4 py-2 text-slate-500 font-medium">Variable</th>
+                                        <th class="text-right px-4 py-2 text-slate-500 font-medium">Media</th>
+                                        <th class="text-right px-4 py-2 text-slate-500 font-medium">Media por frames</th>
+                                        <th class="text-right px-4 py-2 text-slate-500 font-medium">SEM</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sm-mean-simple-body" class="divide-y divide-border-dim"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Casos 2, 3, 4: selector de ejes + plot -->
+                    <div id="sm-plot-controls" class="hidden space-y-3">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1.5">
+                                <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Eje X</label>
+                                <select id="sm-axis-x"
+                                        class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                               text-slate-300 rounded-md px-3 py-2
+                                               focus:outline-none focus:border-accent/60 transition-colors">
+                                </select>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Eje Y</label>
+                                <select id="sm-axis-y"
+                                        class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                               text-slate-300 rounded-md px-3 py-2
+                                               focus:outline-none focus:border-accent/60 transition-colors">
+                                </select>
+                            </div>
+                        </div>
+                        <div id="sm-color-row" class="hidden space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Color por</label>
+                            <select id="sm-color-by"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                            </select>
+                        </div>
+                        <button onclick="window.viz.runSimplePlot()"
+                                class="w-full font-mono text-xs py-2 rounded-md
+                                       bg-accent/10 border border-accent/40 text-accent
+                                       hover:bg-accent/20 transition-all duration-150">
+                            Graficar
+                        </button>
+                    </div>
+
+                    <!-- Estado vacío -->
+                    <div id="sm-empty"
+                         class="rounded-lg border border-dashed border-border-dim bg-surface-800/40
+                                flex flex-col items-center justify-center gap-2 px-5 py-10 text-center">
+                        <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">
+                            Cargá un run para visualizar
+                        </p>
+                    </div>
+
+                </div>
+
+                <!-- Modo avanzado: editor -->
+                <div id="dev-mode-panel" class="hidden space-y-3">
+                    <div class="rounded-lg border border-border-dim bg-surface-800 overflow-hidden">
+                        <div class="flex items-center justify-between px-4 py-2 border-b border-border-dim bg-surface-700/40">
+                            <p class="font-mono text-xs text-slate-500">Python &mdash; plt y data disponibles</p>
+                            <button onclick="window.viz.runCode()"
+                                    class="font-mono text-xs px-4 py-1 rounded
+                                           bg-accent/10 border border-accent/40 text-accent
+                                           hover:bg-accent/20 transition-all duration-150">
+                                Ejecutar
+                            </button>
+                        </div>
+                        <div id="code-editor"></div>
+                    </div>
+
+                    <!-- Error output -->
+                    <div id="code-error" class="hidden rounded-md border border-red-900/50 bg-red-950/20 px-4 py-3">
+                        <pre id="code-error-text" class="font-mono text-xs text-red-400 whitespace-pre-wrap"></pre>
+                    </div>
+
+                    <!-- Stdout output -->
+                    <div id="code-stdout" class="hidden rounded-md border border-border-dim bg-surface-900 px-4 py-3">
+                        <p class="font-mono text-xs text-slate-600 uppercase tracking-widest mb-2">Salida</p>
+                        <pre id="code-stdout-text" class="font-mono text-xs text-slate-300 whitespace-pre-wrap"></pre>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Columna derecha: figura -->
+            <div class="flex flex-col gap-3">
+                <div id="plot-container"
+                     class="rounded-lg border border-border-dim bg-surface-900 overflow-hidden
+                            flex flex-col items-center justify-center"
+                     style="min-height: 320px;">
+
+                    <!-- Estado vacío -->
+                    <div id="plot-empty" class="flex flex-col items-center gap-2 text-center px-6">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-slate-700"
+                             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                        <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">
+                            Sin figura
+                        </p>
+                    </div>
+
+                    <!-- Estado: ejecutando -->
+                    <div id="plot-loading" class="hidden flex-col items-center gap-2">
+                        <div class="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></div>
+                        <p class="font-mono text-xs text-slate-500">Ejecutando...</p>
+                    </div>
+
+                    <!-- Figura generada -->
+                    <img id="plot-img" src="" alt="plot"
+                         class="hidden max-w-full rounded" />
+                </div>
+
+                <!-- Botón descargar -->
+                <div class="flex justify-end">
+                    <button id="download-btn" onclick="window.viz.downloadFigure()"
+                            class="hidden font-mono text-xs px-4 py-1.5 rounded border border-border-dim
+                                   text-slate-400 hover:text-accent hover:border-accent/40 transition-colors">
+                        Descargar figura
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
 </div>
+
+<!-- Espacio para scroll -->
+<div style="height: 40vh"></div>
+
+<style>
+    .run-num-input::-webkit-inner-spin-button,
+    .run-num-input::-webkit-outer-spin-button { opacity: 0.15; }
+    .run-num-input[type=number] { -moz-appearance: textfield; }
+</style>
+
+<script>
+(function () {
+    let currentRunN   = null;
+    let pollTimer     = null;
+    let loadedCSVs    = {};
+    let lastFigureB64 = null;
+    let runMeta       = null;   // resultado de /api/run/{n}/meta
+
+    // --------------------------------------------------------
+    // CARGAR RUN
+    // --------------------------------------------------------
+    async function loadRun() {
+        const n = parseInt(document.getElementById('run-number-input').value);
+        if (!n || n < 1) return;
+        currentRunN = n;
+        loadedCSVs  = {};
+        clearPoll();
+        await refreshStatus();
+    }
+
+    async function refreshStatus() {
+        if (!currentRunN) return;
+        try {
+            const resp = await fetch(`/api/run/${currentRunN}/status`);
+            if (!resp.ok) {
+                showStatusPanel('error', `run-${currentRunN}`, 'Run no encontrado', 0, null);
+                return;
+            }
+            const data  = await resp.json();
+            const s     = data.status || {};
+            const state = s.state || 'unknown';
+
+            showStatusPanel(state, `run-${currentRunN}`, s.message || '', s.progress || 0, s.eta_sec || null);
+
+            if (state === 'running' || state === 'pending') {
+                pollTimer = setTimeout(refreshStatus, 2000);
+            } else if (state === 'done' || state === 'finished') {
+                await loadResultFiles(data.results?.files || []);
+            }
+        } catch (err) {
+            showStatusPanel('error', `run-${currentRunN}`, err.message, 0, null);
+        }
+    }
+
+    function clearPoll() {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    }
+
+    // --------------------------------------------------------
+    // PANEL ESTADO
+    // --------------------------------------------------------
+    const STATE_LABELS = { pending: 'En cola', running: 'Ejecutando', done: 'Completado', finished: 'Completado', error: 'Error' };
+    const STATE_COLORS = {
+        pending:  'text-slate-400 border-slate-600',
+        running:  'text-sky-400 border-sky-800',
+        done:     'text-green-400 border-green-900',
+        finished: 'text-green-400 border-green-900',
+        error:    'text-red-400 border-red-900',
+    };
+
+    function showStatusPanel(state, title, message, progress, eta) {
+        document.getElementById('run-status-panel').classList.remove('hidden');
+        document.getElementById('run-status-title').textContent   = title;
+        document.getElementById('run-status-message').textContent = message;
+
+        const badge = document.getElementById('run-status-badge');
+        badge.textContent = STATE_LABELS[state] || state;
+        badge.className   = `font-mono text-xs px-2 py-0.5 rounded border ${STATE_COLORS[state] || 'text-slate-400 border-slate-600'}`;
+
+        const prog = document.getElementById('run-progress-container');
+        if (state === 'running' || state === 'pending') {
+            prog.classList.remove('hidden');
+            document.getElementById('run-progress-bar').style.width = `${Math.round((progress || 0) * 100)}%`;
+            document.getElementById('run-eta').textContent = eta ? `ETA: ${eta}s` : '';
+        } else {
+            prog.classList.add('hidden');
+        }
+    }
+
+    // --------------------------------------------------------
+    // ARCHIVOS RESULTADO
+    // --------------------------------------------------------
+    async function loadResultFiles(files) {
+        if (!files.length) {
+            try {
+                const r = await fetch(`/api/run/${currentRunN}/results`);
+                if (r.ok) files = (await r.json()).files || [];
+            } catch (_) {}
+        }
+
+        const container = document.getElementById('run-files-container');
+        const list      = document.getElementById('run-files-list');
+        list.innerHTML  = '';
+
+        if (!files.length) { container.classList.add('hidden'); return; }
+
+        files.forEach(fname => {
+            const btn = document.createElement('button');
+            btn.className = 'font-mono text-xs px-3 py-1 rounded border border-border-dim ' +
+                            'text-slate-400 hover:text-accent hover:border-accent/40 transition-colors';
+            btn.textContent = fname.replace(/^results\//, '');
+            btn.onclick = () => { document.getElementById('csv-select').value = fname; onCSVSelect(fname); };
+            list.appendChild(btn);
+        });
+        container.classList.remove('hidden');
+
+        const sel = document.getElementById('csv-select');
+        sel.innerHTML = files.length === 1 ? '' : '<option value="">— Elegir archivo —</option>';
+        files.forEach(fname => {
+            const opt = document.createElement('option');
+            opt.value = fname; opt.textContent = fname.replace(/^results\//, '');
+            sel.appendChild(opt);
+        });
+        if (files.length === 1) {
+            sel.value = files[0];
+            await onCSVSelect(files[0]);
+        }
+
+        document.getElementById('viz-panel').classList.remove('hidden');
+
+        // Cargar meta del run para configurar el modo simple
+        try {
+            const mr = await fetch(`/api/run/${currentRunN}/meta`);
+            if (mr.ok) {
+                runMeta = await mr.json();
+                configureSimpleMode(runMeta, files);
+            }
+        } catch (_) {}
+    }
+
+    // --------------------------------------------------------
+    // MODO SIMPLE
+    // --------------------------------------------------------
+    const ACCENT_COLORS = [
+        '#38bdf8','#34d399','#f59e0b','#f87171',
+        '#a78bfa','#fb923c','#e879f9','#4ade80',
+    ];
+
+    function configureSimpleMode(meta, files) {
+        document.getElementById('sm-empty').classList.add('hidden');
+        document.getElementById('sm-mean-simple').classList.add('hidden');
+        document.getElementById('sm-plot-controls').classList.add('hidden');
+
+        if (meta.output_type === 'mean_simple') {
+            buildMeanSimpleTable(meta);
+        } else {
+            buildPlotControls(meta);
+        }
+    }
+
+    function buildMeanSimpleTable(meta) {
+        const tbody = document.getElementById('sm-mean-simple-body');
+        tbody.innerHTML = '';
+        const csvKey = Object.keys(loadedCSVs)[0];
+        if (!csvKey) return;
+        const row = loadedCSVs[csvKey][0]; // unica fila
+        if (!row) return;
+
+        const vars = [...meta.params];
+        if (meta.save_n) vars.push('N');
+
+        vars.forEach(v => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-surface-700/30 transition-colors';
+            const mean    = row[v]        ?? '—';
+            const fMean   = row[v+'_fMean'] ?? (v === 'N' ? '—' : '—');
+            const sem     = row[v+'_SEM']   ?? (v === 'N' ? '—' : '—');
+            tr.innerHTML = `
+                <td class="px-4 py-2 text-accent">${v}</td>
+                <td class="px-4 py-2 text-right text-slate-300">${mean}</td>
+                <td class="px-4 py-2 text-right text-slate-400">${fMean}</td>
+                <td class="px-4 py-2 text-right text-slate-500">${sem}</td>`;
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('sm-mean-simple').classList.remove('hidden');
+    }
+
+    function buildPlotControls(meta) {
+        const csvKey = Object.keys(loadedCSVs)[0];
+        if (!csvKey) return;
+        const cols = Object.keys(loadedCSVs[csvKey][0] || {});
+
+        const selX = document.getElementById('sm-axis-x');
+        const selY = document.getElementById('sm-axis-y');
+        selX.innerHTML = ''; selY.innerHTML = '';
+
+        cols.forEach(c => {
+            selX.appendChild(new Option(c, c));
+            selY.appendChild(new Option(c, c));
+        });
+
+        // Defaults sensibles
+        const xDefault = cols.includes('conf') ? 'conf' : cols[0];
+        const yDefault = cols.find(c => c !== xDefault) || cols[0];
+        selX.value = xDefault;
+        selY.value = yDefault;
+
+        // Color por atomo solo para casos _atoms
+        const colorRow = document.getElementById('sm-color-row');
+        if (meta.output_type === 'time_atoms' || meta.output_type === 'mean_atoms') {
+            colorRow.classList.remove('hidden');
+            const selC = document.getElementById('sm-color-by');
+            selC.innerHTML = '<option value="">— Ninguno —</option>';
+            ['Atom', ...meta.atoms].forEach(a => selC.appendChild(new Option(a, a)));
+        } else {
+            colorRow.classList.add('hidden');
+        }
+
+        document.getElementById('sm-plot-controls').classList.remove('hidden');
+    }
+
+    async function runSimplePlot() {
+        if (!runMeta) return;
+
+        // Asegurar que el CSV esté cargado
+        const sel = document.getElementById('csv-select');
+        if (sel && sel.value) await onCSVSelect(sel.value);
+
+        const csvKey = Object.keys(loadedCSVs)[0];
+        console.log('[V4S:simplePlot] loadedCSVs keys:', Object.keys(loadedCSVs));
+        console.log('[V4S:simplePlot] csvKey:', csvKey);
+        if (!csvKey) { console.warn('[V4S:simplePlot] no CSV loaded'); return; }
+
+        const xCol    = document.getElementById('sm-axis-x').value;
+        const yCol    = document.getElementById('sm-axis-y').value;
+        const colorBy = document.getElementById('sm-color-by')?.value || '';
+        const rows    = loadedCSVs[csvKey];
+        console.log('[V4S:simplePlot] xCol:', xCol, '| yCol:', yCol, '| rows:', rows?.length);
+
+        // Construir codigo python automaticamente (sin imports, pd/np ya estan en namespace)
+        let code = '';
+        if (colorBy && colorBy !== '') {
+            code = `
+df = data['${csvKey}']
+groups = df['${colorBy}'].unique() if '${colorBy}' in df.columns else []
+colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']
+for i, grp in enumerate(groups):
+    sub = df[df['${colorBy}'] == grp]
+    plt.plot(sub['${xCol}'], sub['${yCol}'], label=str(grp), color=colors[i % len(colors)])
+plt.xlabel('${xCol}')
+plt.ylabel('${yCol}')
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+`;
+        } else {
+            code = `
+df = data['${csvKey}']
+plt.plot(df['${xCol}'], df['${yCol}'], color='#38bdf8')
+plt.xlabel('${xCol}')
+plt.ylabel('${yCol}')
+plt.grid(True)
+plt.tight_layout()
+`;
+        }
+
+        setPlotState('loading');
+        try {
+            const resp = await fetch('/api/run/execute', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ code, data: loadedCSVs }),
+            });
+            const result = await resp.json();
+            console.log('[V4S:simplePlot] result keys:', Object.keys(result), '| error:', result.error);
+            if (result.figure_b64) {
+                lastFigureB64 = result.figure_b64;
+                setPlotState('figure', result.figure_b64);
+                document.getElementById('download-btn').classList.remove('hidden');
+            } else {
+                console.warn('[V4S:simplePlot] no figure_b64 in result:', result);
+                setPlotState('empty');
+            }
+        } catch (err) { console.error('[V4S:simplePlot] fetch error:', err); setPlotState('empty'); }
+    }
+
+    async function onCSVSelect(fname) {
+        if (!fname || !currentRunN) return;
+        if (!loadedCSVs[fname]) {
+            try {
+                // El endpoint espera solo el nombre sin "results/"
+                const bare = fname.replace(/^results\//, '');
+                const r = await fetch(`/api/run/${currentRunN}/csv/${encodeURIComponent(bare)}`);
+                if (r.ok) loadedCSVs[bare] = (await r.json()).rows;
+            } catch (_) {}
+        }
+    }
+
+    // --------------------------------------------------------
+    // MODO AVANZADO
+    // --------------------------------------------------------
+    function toggleDevMode(enabled) {
+        document.getElementById('simple-mode-panel').classList.toggle('hidden', enabled);
+        document.getElementById('dev-mode-panel').classList.toggle('hidden', !enabled);
+        document.getElementById('csv-select-container').classList.toggle('hidden', enabled);
+        // Precargar todos los CSVs cuando se activa modo avanzado
+        if (enabled) preloadAllCSVs();
+    }
+
+    async function preloadAllCSVs() {
+        const sel = document.getElementById('csv-select');
+        const options = [...sel.options].map(o => o.value).filter(Boolean);
+        for (const fname of options) {
+            await onCSVSelect(fname);
+        }
+    }
+
+    async function runCode() {
+        const code = (window._cmEditor ? window._cmEditor.state.doc.toString() : '').trim();
+        if (!code) return;
+
+        const fname = document.getElementById('csv-select').value;
+        if (fname) await onCSVSelect(fname);
+
+        setPlotState('loading');
+        document.getElementById('code-error').classList.add('hidden');
+
+        try {
+            const resp = await fetch('/api/run/execute', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ code, data: loadedCSVs }),
+            });
+            const result = await resp.json();
+
+            document.getElementById('code-error').classList.add('hidden');
+            document.getElementById('code-stdout').classList.add('hidden');
+
+            if (result.error) {
+                setPlotState('empty');
+                document.getElementById('code-error').classList.remove('hidden');
+                document.getElementById('code-error-text').textContent = result.error;
+            } else if (result.figure_b64) {
+                lastFigureB64 = result.figure_b64;
+                setPlotState('figure', result.figure_b64);
+                document.getElementById('download-btn').classList.remove('hidden');
+            }
+
+            if (result.stdout && result.stdout.trim()) {
+                document.getElementById('code-stdout').classList.remove('hidden');
+                document.getElementById('code-stdout-text').textContent = result.stdout;
+            }
+        } catch (err) {
+            setPlotState('empty');
+            document.getElementById('code-error').classList.remove('hidden');
+            document.getElementById('code-error-text').textContent = err.message;
+        }
+    }
+
+    function setPlotState(state, b64) {
+        document.getElementById('plot-empty').classList.add('hidden');
+        document.getElementById('plot-loading').classList.add('hidden');
+        document.getElementById('plot-img').classList.add('hidden');
+
+        if (state === 'empty')   document.getElementById('plot-empty').classList.remove('hidden');
+        if (state === 'loading') document.getElementById('plot-loading').classList.remove('hidden');
+        if (state === 'figure') {
+            const img = document.getElementById('plot-img');
+            img.src   = `data:image/png;base64,${b64}`;
+            img.classList.remove('hidden');
+        }
+    }
+
+    function downloadFigure() {
+        if (!lastFigureB64) return;
+        const a  = document.createElement('a');
+        a.href   = `data:image/png;base64,${lastFigureB64}`;
+        a.download = `run-${currentRunN}-plot.png`;
+        a.click();
+    }
+
+    window.viz = { loadRun, toggleDevMode, runCode, downloadFigure, onCSVSelect, runSimplePlot };
+})();
+
+// Inicializar CodeMirror después de que el DOM esté listo
+(async function initCodeMirror() {
+    const container = document.getElementById('code-editor');
+    if (!container) return;
+
+    // Importar CodeMirror 6 desde CDN
+    const { EditorState }     = await import('https://esm.sh/@codemirror/state@6');
+    const { EditorView, keymap, lineNumbers, highlightActiveLine,
+             drawSelection, rectangularSelection } = await import('https://esm.sh/@codemirror/view@6');
+    const { defaultKeymap, indentWithTab }          = await import('https://esm.sh/@codemirror/commands@6');
+    const { python }                                 = await import('https://esm.sh/@codemirror/lang-python@6');
+    const { oneDark }                                = await import('https://esm.sh/@codemirror/theme-one-dark@6');
+    const { indentOnInput, bracketMatching,
+             foldGutter, syntaxHighlighting,
+             defaultHighlightStyle }                 = await import('https://esm.sh/@codemirror/language@6');
+    const { autocompletion }                         = await import('https://esm.sh/@codemirror/autocomplete@6');
+
+    const PLACEHOLDER = `# data es un dict: filename -> DataFrame de pandas
+# pd y np también están disponibles
+#
+# df = data['V1S_mean.csv']
+# plt.plot(df['time'], df['V1S'], color='#38bdf8')
+# plt.xlabel('Tiempo (ps)')
+# plt.ylabel('V1S (kJ/mol)')
+# plt.tight_layout()`;
+
+    const theme = EditorView.theme({
+        '&': { backgroundColor: '#0f1520', color: '#cbd5e1', fontSize: '0.75rem',
+               fontFamily: '"JetBrains Mono", monospace', minHeight: '200px' },
+        '.cm-content': { padding: '12px 0' },
+        '.cm-line':    { padding: '0 12px' },
+        '.cm-gutters': { backgroundColor: '#0a0e17', borderRight: '1px solid #1e2d45',
+                         color: '#334155', minWidth: '40px' },
+        '.cm-activeLineGutter': { backgroundColor: '#151d2e' },
+        '.cm-activeLine':       { backgroundColor: '#151d2e' },
+        '.cm-cursor':           { borderLeftColor: '#38bdf8' },
+        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#1e3a5f' },
+        '.cm-scroller': { fontFamily: '"JetBrains Mono", monospace' },
+    });
+
+    const startDoc = PLACEHOLDER;
+
+    window._cmEditor = new EditorView({
+        state: EditorState.create({
+            doc: startDoc,
+            extensions: [
+                lineNumbers(),
+                highlightActiveLine(),
+                drawSelection(),
+                indentOnInput(),
+                bracketMatching(),
+                foldGutter(),
+                syntaxHighlighting(defaultHighlightStyle),
+                python(),
+                autocompletion(),
+                keymap.of([...defaultKeymap, indentWithTab]),
+                oneDark,
+                theme,
+                EditorView.lineWrapping,
+            ],
+        }),
+        parent: container,
+    });
+})();
+</script>
