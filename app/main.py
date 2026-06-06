@@ -396,6 +396,16 @@ async def get_run_meta(n: int):
     else:
         output_type = "time_atoms"
 
+    # Leer DT desde system.toml del sistema asociado
+    dt = 0.0
+    sistema_id = doc.get("meta", {}).get("sistema_id", "")
+    if sistema_id:
+        sys_toml = DATA_PATH / sistema_id / "system.toml"
+        if sys_toml.exists():
+            with open(sys_toml, "rb") as f:
+                sys_doc = tomllib.load(f)
+            dt = sys_doc.get("simulation", {}).get("snapshot_interval_ps", 0.0)
+
     return {
         "output_type": output_type,
         "params":      params,
@@ -403,6 +413,7 @@ async def get_run_meta(n: int):
         "save_n":      save_n,
         "output_mode": output_mode,
         "scope":       scope,
+        "dt":          dt,
     }
 
 
@@ -487,12 +498,14 @@ async def execute_code(payload: dict = Body(...)):
            or hasattr(__builtins__, k)
     }
 
+    dt = float(payload.get("dt", 0.0))
     namespace = {
         "__builtins__": safe_builtins,
         "plt":          plt,
         "pd":           pd,
         "np":           np,
         "data":         data,
+        "DT":           dt,
     }
 
     stdout_capture = io.StringIO()
@@ -536,6 +549,19 @@ async def execute_code(payload: dict = Body(...)):
             if "<frozen" not in l and "site-packages" not in l
         )
         return {"error": err}
+
+
+@app.get("/api/run/{n}/csv/{filename}/raw")
+async def download_run_csv(n: int, filename: str):
+    from fastapi.responses import FileResponse
+    run_dir  = RUNS_DIR / f"run-{n}"
+    csv_path = run_dir / "results" / filename
+    if not csv_path.exists():
+        csv_path = run_dir / filename
+    if not csv_path.exists() or csv_path.suffix != ".csv":
+        return JSONResponse({"detail": "Archivo no encontrado"}, status_code=404)
+    return FileResponse(csv_path, media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.get("/tabs/visualizacion", response_class=HTMLResponse)

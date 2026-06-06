@@ -169,7 +169,10 @@
             if (evt.detail.target && evt.detail.target.id === 'tab-content') {
                 if (window.v4s && typeof window.v4s.saveFormState === 'function') {
                     window.v4s.saveFormState();
-}
+                }
+                if (window.viz && typeof window.viz.saveVizState === 'function') {
+                    window.viz.saveVizState();
+                }
             }
         });
 

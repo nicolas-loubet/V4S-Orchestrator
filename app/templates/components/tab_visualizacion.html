@@ -216,7 +216,12 @@
                 </div>
 
                 <!-- Botón descargar -->
-                <div class="flex justify-end">
+                <div class="flex justify-end gap-2">
+                    <button id="download-csv-btn" onclick="window.viz.downloadCSV()"
+                            class="hidden font-mono text-xs px-4 py-1.5 rounded border border-border-dim
+                                   text-slate-400 hover:text-accent hover:border-accent/40 transition-colors">
+                        Descargar CSV
+                    </button>
                     <button id="download-btn" onclick="window.viz.downloadFigure()"
                             class="hidden font-mono text-xs px-4 py-1.5 rounded border border-border-dim
                                    text-slate-400 hover:text-accent hover:border-accent/40 transition-colors">
@@ -363,7 +368,25 @@
             const mr = await fetch(`/api/run/${currentRunN}/meta`);
             if (mr.ok) {
                 runMeta = await mr.json();
+                // Agregar columna time a CSVs de serie temporal
+                if (runMeta.output_type === 'time_simple' || runMeta.output_type === 'time_atoms') {
+                    addTimeColumn(runMeta.dt || 0);
+                }
                 configureSimpleMode(runMeta, files);
+                // Actualizar placeholder del editor con ejemplo relevante
+                if (window._cmEditor) {
+                    const ph = getPlaceholder(runMeta);
+                    const cur = window._cmEditor.state.doc.toString();
+                    // Solo reemplazar si el usuario no modificó el placeholder
+                    if (!cur.trim() || cur === PLACEHOLDER || cur === getPlaceholder(null)) {
+                        const { EditorState } = await import('https://esm.sh/@codemirror/state@6');
+                        window._cmEditor.setState(window._cmEditor.state);
+                        const tr = window._cmEditor.state.update({
+                            changes: { from: 0, to: window._cmEditor.state.doc.length, insert: ph }
+                        });
+                        window._cmEditor.dispatch(tr);
+                    }
+                }
             }
         } catch (_) {}
     }
@@ -375,6 +398,15 @@
         '#38bdf8','#34d399','#f59e0b','#f87171',
         '#a78bfa','#fb923c','#e879f9','#4ade80',
     ];
+
+    function addTimeColumn(dt) {
+        Object.keys(loadedCSVs).forEach(key => {
+            loadedCSVs[key] = loadedCSVs[key].map(row => ({
+                ...row,
+                time: dt > 0 ? parseFloat(row.conf) * dt : parseFloat(row.conf),
+            }));
+        });
+    }
 
     function configureSimpleMode(meta, files) {
         document.getElementById('sm-empty').classList.add('hidden');
@@ -431,8 +463,9 @@
         });
 
         // Defaults sensibles
-        const xDefault = cols.includes('conf') ? 'conf' : cols[0];
-        const yDefault = cols.find(c => c !== xDefault) || cols[0];
+        const isTime   = meta.output_type === 'time_simple' || meta.output_type === 'time_atoms';
+        const xDefault = isTime ? 'time' : (cols.includes('conf') ? 'conf' : cols[0]);
+        const yDefault = cols.find(c => c !== xDefault && c !== 'conf') || cols[0];
         selX.value = xDefault;
         selY.value = yDefault;
 
@@ -500,7 +533,7 @@ plt.tight_layout()
             const resp = await fetch('/api/run/execute', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ code, data: loadedCSVs }),
+                body:    JSON.stringify({ code, data: loadedCSVs, dt: runMeta?.dt || 0 }),
             });
             const result = await resp.json();
             console.log('[V4S:simplePlot] result keys:', Object.keys(result), '| error:', result.error);
@@ -508,6 +541,8 @@ plt.tight_layout()
                 lastFigureB64 = result.figure_b64;
                 setPlotState('figure', result.figure_b64);
                 document.getElementById('download-btn').classList.remove('hidden');
+                document.getElementById('download-csv-btn').classList.remove('hidden');
+                document.getElementById('download-csv-btn').classList.remove('hidden');
             } else {
                 console.warn('[V4S:simplePlot] no figure_b64 in result:', result);
                 setPlotState('empty');
@@ -560,7 +595,7 @@ plt.tight_layout()
             const resp = await fetch('/api/run/execute', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ code, data: loadedCSVs }),
+                body:    JSON.stringify({ code, data: loadedCSVs, dt: runMeta?.dt || 0 }),
             });
             const result = await resp.json();
 
@@ -610,7 +645,87 @@ plt.tight_layout()
         a.click();
     }
 
-    window.viz = { loadRun, toggleDevMode, runCode, downloadFigure, onCSVSelect, runSimplePlot };
+    // --------------------------------------------------------
+    // PERSISTENCIA DE ESTADO
+    // --------------------------------------------------------
+    function saveVizState() {
+        if (!document.getElementById('run-number-input')) return; // tab no en DOM
+        window._v4sVizState = {
+            runN:         currentRunN,
+            meta:         runMeta,
+            loadedCSVs:   loadedCSVs,
+            lastFigureB64:lastFigureB64,
+            runInput:     document.getElementById('run-number-input')?.value || '',
+            devMode:      document.getElementById('dev-mode-switch')?.checked || false,
+            csvSelect:    document.getElementById('csv-select')?.value || '',
+            axisX:        document.getElementById('sm-axis-x')?.value || '',
+            axisY:        document.getElementById('sm-axis-y')?.value || '',
+            editorCode:   window._cmEditor ? window._cmEditor.state.doc.toString() : '',
+        };
+    }
+
+    async function restoreVizState() {
+        const s = window._v4sVizState;
+        if (!s || !s.runN) return;
+
+        currentRunN   = s.runN;
+        runMeta       = s.meta;
+        loadedCSVs    = s.loadedCSVs || {};
+        lastFigureB64 = s.lastFigureB64;
+
+        // Restaurar input
+        const inp = document.getElementById('run-number-input');
+        if (inp) inp.value = s.runInput;
+
+        // Restaurar status panel
+        await refreshStatus();
+
+        // Restaurar modo dev
+        const sw = document.getElementById('dev-mode-switch');
+        if (sw && s.devMode) {
+            sw.checked = true;
+            toggleDevMode(true);
+        }
+
+        // Restaurar figura si habia una
+        if (lastFigureB64) {
+            setPlotState('figure', lastFigureB64);
+            document.getElementById('download-btn').classList.remove('hidden');
+            document.getElementById('download-csv-btn').classList.remove('hidden');
+        }
+
+        // Restaurar selects
+        setTimeout(() => {
+            const sx = document.getElementById('sm-axis-x');
+            const sy = document.getElementById('sm-axis-y');
+            if (sx && s.axisX) sx.value = s.axisX;
+            if (sy && s.axisY) sy.value = s.axisY;
+        }, 100);
+
+        // Restaurar codigo del editor
+        if (window._cmEditor && s.editorCode) {
+            const tr = window._cmEditor.state.update({
+                changes: { from: 0, to: window._cmEditor.state.doc.length, insert: s.editorCode }
+            });
+            window._cmEditor.dispatch(tr);
+        }
+    }
+
+    function downloadCSV() {
+        const csvKey = document.getElementById('csv-select')?.value;
+        const bare   = csvKey ? csvKey.replace(/^results\//, '') : null;
+        if (!bare || !currentRunN) return;
+        const a  = document.createElement('a');
+        a.href   = `/api/run/${currentRunN}/csv/${encodeURIComponent(bare)}/raw`;
+        a.download = bare;
+        a.click();
+    }
+
+    window.viz = { loadRun, toggleDevMode, runCode, downloadFigure, downloadCSV, onCSVSelect, runSimplePlot, saveVizState, restoreVizState };
+
+    // Restaurar estado si existe
+    restoreVizState();
+
 })();
 
 // Inicializar CodeMirror después de que el DOM esté listo
@@ -630,14 +745,28 @@ plt.tight_layout()
              defaultHighlightStyle }                 = await import('https://esm.sh/@codemirror/language@6');
     const { autocompletion }                         = await import('https://esm.sh/@codemirror/autocomplete@6');
 
-    const PLACEHOLDER = `# data es un dict: filename -> DataFrame de pandas
-# pd y np también están disponibles
-#
-# df = data['V1S_mean.csv']
-# plt.plot(df['time'], df['V1S'], color='#38bdf8')
-# plt.xlabel('Tiempo (ps)')
-# plt.ylabel('V1S (kJ/mol)')
-# plt.tight_layout()`;
+    function getPlaceholder(meta) {
+        if (!meta) return "# data es un dict: filename -> DataFrame de pandas\n# pd, np y DT también están disponibles";
+        const csvKey = Object.keys(loadedCSVs)[0] || 'archivo.csv';
+        const param  = (meta.params && meta.params[0]) || 'V1S';
+        const unit   = 'kJ/mol';
+
+        if (meta.output_type === 'mean_atoms' || meta.output_type === 'mean_simple') {
+            return `df = data['${csvKey}']
+plt.bar(df['Atom'], df['${param}'], color='#38bdf8')
+plt.xlabel('Atoms')
+plt.ylabel(r'$${param.replace('V','V_{')} ~/~ kJ~mol^{{-1}}$')
+plt.tight_layout()`;
+        } else {
+            return `df = data['${csvKey}']
+plt.plot(df['conf'] * DT, df['${param}'], color='#38bdf8')
+plt.xlabel('Tiempo (ps)')
+plt.ylabel('${param} (${unit})')
+plt.tight_layout()`;
+        }
+    }
+
+    const PLACEHOLDER = getPlaceholder(null);
 
     const theme = EditorView.theme({
         '&': { backgroundColor: '#0f1520', color: '#cbd5e1', fontSize: '0.75rem',
