@@ -109,7 +109,61 @@
                         </div>
                     </div>
 
-                    <!-- Casos 2, 3, 4: selector de ejes + plot -->
+                    <!-- mean_atoms: panel de opciones -->
+                    <div id="sm-mean-atoms-controls" class="hidden space-y-4">
+
+                        <div class="space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Parámetro</label>
+                            <select id="sm-param-select"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                            </select>
+                        </div>
+
+                        <div class="space-y-2">
+                            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">Tipo de media</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="sm-mean-type" value="simple" checked
+                                           class="w-3.5 h-3.5 accent-sky-400 cursor-pointer" />
+                                    <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Media de valores</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="sm-mean-type" value="fmean"
+                                           class="w-3.5 h-3.5 accent-sky-400 cursor-pointer" />
+                                    <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Media por frames</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2.5">
+                            <label class="flex items-center gap-3 cursor-pointer group">
+                                <input type="checkbox" id="sm-show-errors" checked
+                                       class="w-4 h-4 rounded accent-sky-400 cursor-pointer" />
+                                <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Mostrar barras de error</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer group">
+                                <input type="checkbox" id="sm-show-all" checked
+                                       class="w-4 h-4 rounded accent-sky-400 cursor-pointer" />
+                                <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Mostrar categoría All</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer group" id="sm-n-row" style="display:none">
+                                <input type="checkbox" id="sm-show-n"
+                                       class="w-4 h-4 rounded accent-sky-400 cursor-pointer" />
+                                <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Superponer número de moléculas</span>
+                            </label>
+                        </div>
+
+                        <button onclick="window.viz.runSimplePlot()"
+                                class="w-full font-mono text-xs py-2 rounded-md
+                                       bg-accent/10 border border-accent/40 text-accent
+                                       hover:bg-accent/20 transition-all duration-150">
+                            Graficar
+                        </button>
+                    </div>
+
+                    <!-- time_simple / time_atoms: selector de ejes -->
                     <div id="sm-plot-controls" class="hidden space-y-3">
                         <div class="grid grid-cols-2 gap-3">
                             <div class="space-y-1.5">
@@ -411,6 +465,7 @@
     function configureSimpleMode(meta, files) {
         document.getElementById('sm-empty').classList.add('hidden');
         document.getElementById('sm-mean-simple').classList.add('hidden');
+        document.getElementById('sm-mean-atoms-controls').classList.add('hidden');
         document.getElementById('sm-plot-controls').classList.add('hidden');
 
         if (meta.output_type === 'mean_simple') {
@@ -451,27 +506,34 @@
     function buildPlotControls(meta) {
         const csvKey = Object.keys(loadedCSVs)[0];
         if (!csvKey) return;
-        const cols = Object.keys(loadedCSVs[csvKey][0] || {});
 
+        if (meta.output_type === 'mean_atoms') {
+            // Panel especial para mean_atoms
+            const cols   = Object.keys(loadedCSVs[csvKey][0] || {});
+            const params = (meta.params || []).filter(p => cols.includes(p));
+            const sel    = document.getElementById('sm-param-select');
+            sel.innerHTML = '';
+            params.forEach(p => sel.appendChild(new Option(p, p)));
+            const nRow = document.getElementById('sm-n-row');
+            nRow.style.display = cols.includes('N') ? '' : 'none';
+            document.getElementById('sm-mean-atoms-controls').classList.remove('hidden');
+            return;
+        }
+
+        const cols = Object.keys(loadedCSVs[csvKey][0] || {});
         const selX = document.getElementById('sm-axis-x');
         const selY = document.getElementById('sm-axis-y');
         selX.innerHTML = ''; selY.innerHTML = '';
+        cols.forEach(c => { selX.appendChild(new Option(c, c)); selY.appendChild(new Option(c, c)); });
 
-        cols.forEach(c => {
-            selX.appendChild(new Option(c, c));
-            selY.appendChild(new Option(c, c));
-        });
-
-        // Defaults sensibles
         const isTime   = meta.output_type === 'time_simple' || meta.output_type === 'time_atoms';
         const xDefault = isTime ? 'time' : (cols.includes('conf') ? 'conf' : cols[0]);
         const yDefault = cols.find(c => c !== xDefault && c !== 'conf') || cols[0];
         selX.value = xDefault;
         selY.value = yDefault;
 
-        // Color por atomo solo para casos _atoms
         const colorRow = document.getElementById('sm-color-row');
-        if (meta.output_type === 'time_atoms' || meta.output_type === 'mean_atoms') {
+        if (meta.output_type === 'time_atoms') {
             colorRow.classList.remove('hidden');
             const selC = document.getElementById('sm-color-by');
             selC.innerHTML = '<option value="">— Ninguno —</option>';
@@ -483,49 +545,84 @@
         document.getElementById('sm-plot-controls').classList.remove('hidden');
     }
 
-    async function runSimplePlot() {
+    function buildMeanAtomsCode(csvKey) {
+        const param    = document.getElementById('sm-param-select')?.value || 'V1S';
+        const meanType = document.querySelector('input[name="sm-mean-type"]:checked')?.value || 'simple';
+        const showErr  = document.getElementById('sm-show-errors')?.checked ?? true;
+        const showAll  = document.getElementById('sm-show-all')?.checked ?? true;
+        const showN    = document.getElementById('sm-show-n')?.checked ?? false;
+        const yCol     = meanType === 'fmean' ? param + '_fMean' : param;
+        const errCol   = param + '_SEM';
+
+        const L = [];
+        L.push("df = data['" + csvKey + "'].copy()");
+        if (!showAll) L.push("df = df[df['Atom'] != 'All']");
+        L.push("atoms  = df['Atom'].tolist()");
+        L.push("y_vals = df['" + yCol + "'].tolist()");
+        if (showErr) {
+            L.push("y_err  = df['" + errCol + "'].tolist() if '" + errCol + "' in df.columns else None");
+        } else {
+            L.push("y_err  = None");
+        }
+        L.push("x      = range(len(atoms))");
+        L.push("colors = ['#3b5675' if a != 'All' else '#2d5fa3' for a in atoms]");
+        L.push("fig, ax1 = plt.subplots()");
+        L.push("ax1.bar(x, y_vals, color=colors,");
+        L.push("        yerr=y_err, capsize=5, error_kw=dict(ecolor='#94a3b8', lw=1.2))");
+        L.push("ax1.set_xticks(list(x))");
+        L.push("ax1.set_xticklabels(atoms, rotation=45, ha='right')");
+        L.push("ax1.set_ylabel('" + yCol + "')");
+        L.push("ax1.axhline(0, color='#1e2d45', linewidth=0.8)");
+        if (showN) {
+            L.push("if 'N' in df.columns:");
+            L.push("    ax2 = ax1.twinx()");
+            L.push("    ax2.plot(list(x), df['N'].tolist(), color='#f59e0b', marker='o', linewidth=3, markersize=6)");
+            L.push("    ax2.set_ylabel('N', color='#f59e0b')");
+            L.push("    ax2.tick_params(axis='y', labelcolor='#f59e0b')");
+        }
+        L.push("plt.tight_layout()");
+        return L.join('\n');
+    }
+
+        async function runSimplePlot() {
         if (!runMeta) return;
 
-        // Asegurar que el CSV esté cargado
         const sel = document.getElementById('csv-select');
         if (sel && sel.value) await onCSVSelect(sel.value);
 
         const csvKey = Object.keys(loadedCSVs)[0];
-        console.log('[V4S:simplePlot] loadedCSVs keys:', Object.keys(loadedCSVs));
-        console.log('[V4S:simplePlot] csvKey:', csvKey);
-        if (!csvKey) { console.warn('[V4S:simplePlot] no CSV loaded'); return; }
+        if (!csvKey) return;
 
-        const xCol    = document.getElementById('sm-axis-x').value;
-        const yCol    = document.getElementById('sm-axis-y').value;
-        const colorBy = document.getElementById('sm-color-by')?.value || '';
-        const rows    = loadedCSVs[csvKey];
-        console.log('[V4S:simplePlot] xCol:', xCol, '| yCol:', yCol, '| rows:', rows?.length);
-
-        // Construir codigo python automaticamente (sin imports, pd/np ya estan en namespace)
         let code = '';
-        if (colorBy && colorBy !== '') {
-            code = `
-df = data['${csvKey}']
-groups = df['${colorBy}'].unique() if '${colorBy}' in df.columns else []
-colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']
-for i, grp in enumerate(groups):
-    sub = df[df['${colorBy}'] == grp]
-    plt.plot(sub['${xCol}'], sub['${yCol}'], label=str(grp), color=colors[i % len(colors)])
-plt.xlabel('${xCol}')
-plt.ylabel('${yCol}')
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-`;
+
+        if (runMeta.output_type === 'mean_atoms') {
+            code = buildMeanAtomsCode(csvKey);
         } else {
-            code = `
-df = data['${csvKey}']
-plt.plot(df['${xCol}'], df['${yCol}'], color='#38bdf8')
-plt.xlabel('${xCol}')
-plt.ylabel('${yCol}')
-plt.grid(True)
-plt.tight_layout()
-`;
+            const xCol    = document.getElementById('sm-axis-x').value;
+            const yCol    = document.getElementById('sm-axis-y').value;
+            const colorBy = document.getElementById('sm-color-by')?.value || '';
+            const lines_  = [];
+            if (colorBy) {
+                lines_.push("df = data['" + csvKey + "']");
+                lines_.push("groups = df['" + colorBy + "'].unique() if '" + colorBy + "' in df.columns else []");
+                lines_.push("colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']");
+                lines_.push("for i, grp in enumerate(groups):");
+                lines_.push("    sub = df[df['" + colorBy + "'] == grp]");
+                lines_.push("    plt.plot(sub['" + xCol + "'], sub['" + yCol + "'], label=str(grp), color=colors[i % len(colors)])");
+                lines_.push("plt.xlabel('" + xCol + "')");
+                lines_.push("plt.ylabel('" + yCol + "')");
+                lines_.push("plt.legend()");
+                lines_.push("plt.grid(True)");
+                lines_.push("plt.tight_layout()");
+            } else {
+                lines_.push("df = data['" + csvKey + "']");
+                lines_.push("plt.plot(df['" + xCol + "'], df['" + yCol + "'], color='#38bdf8')");
+                lines_.push("plt.xlabel('" + xCol + "')");
+                lines_.push("plt.ylabel('" + yCol + "')");
+                lines_.push("plt.grid(True)");
+                lines_.push("plt.tight_layout()");
+            }
+            code = lines_.join('\n');
         }
 
         setPlotState('loading');
@@ -536,18 +633,19 @@ plt.tight_layout()
                 body:    JSON.stringify({ code, data: loadedCSVs, dt: runMeta?.dt || 0 }),
             });
             const result = await resp.json();
-            console.log('[V4S:simplePlot] result keys:', Object.keys(result), '| error:', result.error);
             if (result.figure_b64) {
                 lastFigureB64 = result.figure_b64;
+                lastAutoCode  = code.trim();
                 setPlotState('figure', result.figure_b64);
                 document.getElementById('download-btn').classList.remove('hidden');
                 document.getElementById('download-csv-btn').classList.remove('hidden');
-                document.getElementById('download-csv-btn').classList.remove('hidden');
+                if (document.getElementById('dev-mode-switch')?.checked) {
+                    setEditorCode(lastAutoCode);
+                }
             } else {
-                console.warn('[V4S:simplePlot] no figure_b64 in result:', result);
                 setPlotState('empty');
             }
-        } catch (err) { console.error('[V4S:simplePlot] fetch error:', err); setPlotState('empty'); }
+        } catch (_) { setPlotState('empty'); }
     }
 
     async function onCSVSelect(fname) {
@@ -565,12 +663,34 @@ plt.tight_layout()
     // --------------------------------------------------------
     // MODO AVANZADO
     // --------------------------------------------------------
+    function setEditorCode(code) {
+        if (!code) return;
+        if (window._cmEditor) {
+            const tr = window._cmEditor.state.update({
+                changes: { from: 0, to: window._cmEditor.state.doc.length, insert: code }
+            });
+            window._cmEditor.dispatch(tr);
+        } else {
+            const iv = setInterval(() => {
+                if (window._cmEditor) {
+                    clearInterval(iv);
+                    const tr = window._cmEditor.state.update({
+                        changes: { from: 0, to: window._cmEditor.state.doc.length, insert: code }
+                    });
+                    window._cmEditor.dispatch(tr);
+                }
+            }, 100);
+        }
+    }
+
     function toggleDevMode(enabled) {
         document.getElementById('simple-mode-panel').classList.toggle('hidden', enabled);
         document.getElementById('dev-mode-panel').classList.toggle('hidden', !enabled);
         document.getElementById('csv-select-container').classList.toggle('hidden', enabled);
-        // Precargar todos los CSVs cuando se activa modo avanzado
-        if (enabled) preloadAllCSVs();
+        if (enabled) {
+            preloadAllCSVs();
+            if (lastAutoCode) setEditorCode(lastAutoCode);
+        }
     }
 
     async function preloadAllCSVs() {
@@ -716,16 +836,12 @@ plt.tight_layout()
         const bare   = csvKey ? csvKey.replace(/^results\//, '') : null;
         if (!bare || !currentRunN) return;
         const a  = document.createElement('a');
-        a.href   = `/api/run/${currentRunN}/csv/${encodeURIComponent(bare)}/raw`;
+        a.href   = `/api/run/${currentRunN}/csv/${encodeURIComponent(bare)}?raw=1`;
         a.download = bare;
         a.click();
     }
 
     window.viz = { loadRun, toggleDevMode, runCode, downloadFigure, downloadCSV, onCSVSelect, runSimplePlot, saveVizState, restoreVizState };
-
-    // Restaurar estado si existe
-    restoreVizState();
-
 })();
 
 // Inicializar CodeMirror después de que el DOM esté listo
@@ -734,16 +850,17 @@ plt.tight_layout()
     if (!container) return;
 
     // Importar CodeMirror 6 desde CDN
-    const { EditorState }     = await import('https://esm.sh/@codemirror/state@6');
+    const { EditorState }                            = await import('https://esm.sh/@codemirror/state@6');
     const { EditorView, keymap, lineNumbers, highlightActiveLine,
-             drawSelection, rectangularSelection } = await import('https://esm.sh/@codemirror/view@6');
-    const { defaultKeymap, indentWithTab }          = await import('https://esm.sh/@codemirror/commands@6');
+             drawSelection, rectangularSelection }   = await import('https://esm.sh/@codemirror/view@6');
+    const { defaultKeymap, indentWithTab }           = await import('https://esm.sh/@codemirror/commands@6');
     const { python }                                 = await import('https://esm.sh/@codemirror/lang-python@6');
     const { oneDark }                                = await import('https://esm.sh/@codemirror/theme-one-dark@6');
-    const { indentOnInput, bracketMatching,
-             foldGutter, syntaxHighlighting,
+    const { indentOnInput, bracketMatching, foldGutter,
              defaultHighlightStyle }                 = await import('https://esm.sh/@codemirror/language@6');
     const { autocompletion }                         = await import('https://esm.sh/@codemirror/autocomplete@6');
+    const { HighlightStyle, syntaxHighlighting }     = await import('https://esm.sh/@codemirror/language@6');
+    const { tags }                                   = await import('https://esm.sh/@lezer/highlight@1');
 
     function getPlaceholder(meta) {
         if (!meta) return "# data es un dict: filename -> DataFrame de pandas\n# pd, np y DT también están disponibles";
@@ -769,18 +886,40 @@ plt.tight_layout()`;
     const PLACEHOLDER = getPlaceholder(null);
 
     const theme = EditorView.theme({
-        '&': { backgroundColor: '#0f1520', color: '#cbd5e1', fontSize: '0.75rem',
-               fontFamily: '"JetBrains Mono", monospace', minHeight: '200px' },
+        '&': {
+            backgroundColor: '#1a1b26',
+            color: '#c0caf5',
+            fontSize: '14px',
+            fontFamily: '"JetBrains Mono", monospace',
+            minHeight: '200px'
+        },
         '.cm-content': { padding: '12px 0' },
-        '.cm-line':    { padding: '0 12px' },
-        '.cm-gutters': { backgroundColor: '#0a0e17', borderRight: '1px solid #1e2d45',
-                         color: '#334155', minWidth: '40px' },
-        '.cm-activeLineGutter': { backgroundColor: '#151d2e' },
-        '.cm-activeLine':       { backgroundColor: '#151d2e' },
-        '.cm-cursor':           { borderLeftColor: '#38bdf8' },
-        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#1e3a5f' },
-        '.cm-scroller': { fontFamily: '"JetBrains Mono", monospace' },
-    });
+        '.cm-line': { padding: '0 12px' },
+        '.cm-gutters': {
+            backgroundColor: '#16161e',
+            color: '#565f89',
+            borderRight: '1px solid #292e42',
+            minWidth: '40px'
+        },
+        '.cm-activeLine': { backgroundColor: '#24283b' },
+        '.cm-activeLineGutter': { backgroundColor: '#24283b' },
+        '.cm-cursor': { borderLeftColor: '#7aa2f7' },
+        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#364a82' },
+        '.cm-matchingBracket': { backgroundColor: '#3b4261', outline: 'none' }
+    }, { dark: true });
+
+    const tokyoNightHighlight = HighlightStyle.define([
+        { tag: tags.keyword, color: '#bb9af7' },
+        { tag: [tags.bool, tags.null], color: '#ff9e64' },
+        { tag: tags.string, color: '#9ece6a' },
+        { tag: tags.number, color: '#ff9e64' },
+        { tag: tags.comment, color: '#565f89', fontStyle: 'italic' },
+        { tag: tags.function(tags.variableName), color: '#7aa2f7' },
+        { tag: tags.variableName, color: '#c0caf5' },
+        { tag: tags.className, color: '#e0af68' },
+        { tag: tags.typeName, color: '#e0af68' },
+        { tag: tags.operator, color: '#89ddff' }
+    ]);
 
     const startDoc = PLACEHOLDER;
 
@@ -794,11 +933,10 @@ plt.tight_layout()`;
                 indentOnInput(),
                 bracketMatching(),
                 foldGutter(),
-                syntaxHighlighting(defaultHighlightStyle),
+                syntaxHighlighting(tokyoNightHighlight),
                 python(),
                 autocompletion(),
                 keymap.of([...defaultKeymap, indentWithTab]),
-                oneDark,
                 theme,
                 EditorView.lineWrapping,
             ],
