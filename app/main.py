@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from .routes_launch import launch_router
+
 
 try:
     import tomllib
@@ -20,6 +22,7 @@ BASE_DIR  = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR.parent / "data"
 
 app = FastAPI(title="V4S-Orchestrator")
+app.include_router(launch_router)
 
 app.mount(
     "/static",
@@ -567,6 +570,12 @@ async def download_run_csv(n: int, filename: str):
 @app.get("/tabs/visualizacion", response_class=HTMLResponse)
 async def tab_visualizacion(request: Request):
     return _render("components/tab_visualizacion.html", request)
+
+
+
+@app.get("/tabs/lanzar", response_class=HTMLResponse)
+async def tab_lanzar(request: Request):
+    return _render("components/tab_lanzar.html", request)
 
 
 if __name__ == "__main__":

@@ -91,6 +91,20 @@
             <div class="flex items-center gap-1 overflow-x-auto">
 
                 <button
+                    id="nav-lanzar-btn"
+                    class="tab-btn hidden items-center gap-2 px-4 py-3 font-mono text-xs font-medium
+                           text-slate-400 border-b-2 border-transparent
+                           hover:text-accent transition-colors duration-150 whitespace-nowrap"
+                    hx-get="/tabs/lanzar"
+                    hx-target="#tab-content"
+                    hx-swap="innerHTML"
+                    onclick="setActive(this)"
+                >
+                    <span class="tab-dot w-1.5 h-1.5 rounded-full bg-slate-600 transition-all duration-150"></span>
+                    Lanzar
+                </button>
+
+                <button
                     class="tab-btn active flex items-center gap-2 px-4 py-3 font-mono text-xs font-medium
                            text-slate-400 border-b-2 border-transparent
                            hover:text-accent transition-colors duration-150 whitespace-nowrap"
@@ -184,6 +198,15 @@
                 '#tab-content'
             );
         }
+
+        function navToLanzar() {
+            const btn = document.getElementById('nav-lanzar-btn');
+            btn.classList.remove('hidden');
+            btn.classList.add('flex');
+            setActive(btn);
+            htmx.ajax('GET', '/tabs/lanzar', '#tab-content');
+        }
+        window.navToLanzar = navToLanzar;
     </script>
 
     {% block extra_scripts %}{% endblock %}

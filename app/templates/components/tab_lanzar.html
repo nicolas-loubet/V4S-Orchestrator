@@ -1,0 +1,910 @@
+{# tab_lanzar.html #}
+
+<style>
+    .run-num-input::-webkit-inner-spin-button,
+    .run-num-input::-webkit-outer-spin-button { opacity: 0.15; }
+    .run-num-input[type=number] { -moz-appearance: textfield; }
+
+    #hydration-skip-btn[aria-checked="true"] {
+        background-color: rgb(56 189 248 / 0.2);
+        border-color: rgb(56 189 248 / 0.6);
+    }
+    #hydration-skip-btn[aria-checked="true"] .toggle-thumb {
+        background-color: #38bdf8;
+        transform: translateX(16px);
+    }
+    .aniso-btn[aria-checked="true"] {
+        background-color: rgb(56 189 248 / 0.2);
+        border-color: rgb(56 189 248 / 0.6);
+    }
+    .aniso-btn[aria-checked="true"] .toggle-thumb {
+        background-color: #38bdf8;
+        transform: translateX(16px);
+    }
+    .aniso-btn[aria-checked="true"] ~ .aniso-label { color: #38bdf8; }
+</style>
+
+<div class="space-y-5">
+
+    {# ── Encabezado ────────────────────────────────────────────────── #}
+    <div class="flex items-center justify-between border-b border-border-dim pb-4">
+        <div>
+            <h2 class="font-mono text-lg font-bold text-accent tracking-wide">Lanzar Dinámica</h2>
+            <p class="text-slate-500 text-sm mt-0.5">Configuración y lanzamiento del pipeline de simulación.</p>
+        </div>
+    </div>
+
+    {# ── 0. Archivos iniciales ──────────────────────────────────────── #}
+    <section class="rounded-lg border border-border-dim bg-surface-700/50 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-dim bg-surface-800/60">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <span class="font-mono text-xs font-bold text-accent uppercase tracking-widest">Archivos iniciales</span>
+            <span class="ml-auto font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-accent/70">requerido</span>
+        </div>
+        <div class="px-4 py-4 space-y-4">
+            <div class="space-y-1.5">
+                <label for="run-name" class="font-mono text-xs text-slate-500 uppercase tracking-widest">Nombre del run</label>
+                <div class="flex items-center gap-3">
+                    <input type="text" id="run-name" placeholder="mi_proteina_300K"
+                           oninput="window.validateRunName(this)"
+                           class="font-mono text-xs w-64 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 placeholder-slate-700
+                                  focus:border-accent/60 focus:outline-none" />
+                    <span id="run-name-error" class="hidden font-mono text-xs text-red-400"></span>
+                </div>
+                <p class="font-mono text-xs text-slate-600">Solo letras, números, guiones y guiones bajos. Sin espacios.</p>
+            </div>
+            <div id="dropzone"
+                 class="border border-dashed border-accent/30 rounded-lg px-6 py-8 text-center
+                        hover:border-accent/60 hover:bg-accent/5 transition-all duration-150 cursor-pointer"
+                 onclick="document.getElementById('file-input').click()">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto mb-2 text-accent/40" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                <p class="font-mono text-xs text-slate-400">Arrastrá o hacé clic para subir</p>
+                <p class="font-mono text-xs text-slate-600 mt-1">.gro y .top</p>
+            </div>
+            <input id="file-input" type="file" multiple accept=".gro,.top,.itp" class="hidden" />
+            <div id="file-list" class="space-y-1.5 hidden"></div>
+        </div>
+    </section>
+
+    {# ── 1. Hidratación ────────────────────────────────────────────── #}
+    <section class="rounded-lg border border-border-dim bg-surface-700/50 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-dim bg-surface-800/60">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2 C12 2 5 10 5 14a7 7 0 0 0 14 0C19 10 12 2 12 2z"/>
+            </svg>
+            <span class="font-mono text-xs font-bold text-accent uppercase tracking-widest">Hidratación</span>
+            <div class="ml-auto flex items-center gap-2">
+                <span id="hydration-skip-label" class="font-mono text-xs text-slate-600">Sistema ya hidratado</span>
+                <button type="button" id="hydration-skip-btn" role="switch" aria-checked="false"
+                        onclick="window.toggleHydrationSkip()"
+                        class="relative w-8 h-4 rounded-full border border-border-dim bg-surface-600
+                               transition-colors duration-150 focus:outline-none">
+                    <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-slate-500
+                                 transition-all duration-150 toggle-thumb"></span>
+                </button>
+            </div>
+        </div>
+        <div id="hydration-body" class="px-4 py-4 space-y-4">
+            <div class="space-y-1.5">
+                <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Modelo de agua</label>
+                <div class="flex flex-wrap gap-2" id="water-model-group">
+                    {% for model in ['TIP3P', 'SPC/E', 'TIP4P/2005', 'TIP5P/2018'] %}
+                    <button type="button"
+                            class="water-model-btn font-mono text-xs px-3 py-1.5 rounded border
+                                   border-border-dim text-slate-400 bg-surface-600
+                                   hover:border-accent/40 hover:text-slate-200 transition-all duration-150"
+                            data-model="{{ model }}"
+                            onclick="window.selectWaterModel(this)">{{ model }}</button>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="space-y-1.5">
+                <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Tamaño de caja</label>
+                <div class="flex gap-3 items-center">
+                    <button type="button"
+                            class="box-mode-btn font-mono text-xs px-3 py-1.5 rounded border
+                                   border-accent/60 text-accent bg-accent/10 transition-all duration-150"
+                            data-mode="actual" onclick="window.selectBoxMode(this)">Usar caja actual</button>
+                    <button type="button"
+                            class="box-mode-btn font-mono text-xs px-3 py-1.5 rounded border
+                                   border-border-dim text-slate-400 bg-surface-600
+                                   hover:border-accent/40 hover:text-slate-200 transition-all duration-150"
+                            data-mode="resize" onclick="window.selectBoxMode(this)">Redefinir caja</button>
+                </div>
+                <div id="box-resize-inputs" class="hidden flex gap-2 pt-1">
+                    {% for axis in ['X', 'Y', 'Z'] %}
+                    <div class="flex items-center gap-1.5">
+                        <label class="font-mono text-xs text-slate-600">{{ axis }}</label>
+                        <input type="number" step="0.1" placeholder="nm"
+                               class="run-num-input font-mono text-xs w-20 px-2 py-1.5 rounded border border-border-dim
+                                      bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {# ── 2. Minimización ───────────────────────────────────────────── #}
+    <section class="rounded-lg border border-border-dim bg-surface-700/50 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-dim bg-surface-800/60">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <polyline points="6 13 12 19 18 13"/>
+            </svg>
+            <span class="font-mono text-xs font-bold text-accent uppercase tracking-widest">Minimización de energía</span>
+        </div>
+        <div class="px-4 py-4 space-y-4">
+            <div class="flex flex-wrap gap-4 items-start">
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Algoritmo</label>
+                    <div class="flex gap-2">
+                        <button type="button"
+                                class="minim-algo-btn font-mono text-xs px-3 py-1.5 rounded border
+                                       border-accent/60 text-accent bg-accent/10 transition-all duration-150"
+                                data-algo="steep" onclick="window.selectMinimAlgo(this)">steep</button>
+                        <button type="button"
+                                class="minim-algo-btn font-mono text-xs px-3 py-1.5 rounded border
+                                       border-border-dim text-slate-400 bg-surface-600
+                                       hover:border-accent/40 hover:text-slate-200 transition-all duration-150"
+                                data-algo="cg" onclick="window.selectMinimAlgo(this)">cg</button>
+                    </div>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Máx. pasos</label>
+                    <input type="number" id="minim-nsteps" value="10000" min="100" step="100"
+                           class="run-num-input font-mono text-xs w-28 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Corte (kJ/mol)</label>
+                    <input type="number" id="minim-emtol" value="50" min="1" step="1"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+            </div>
+            <div class="space-y-1.5">
+                <button type="button"
+                        class="font-mono text-xs text-slate-600 hover:text-slate-400 transition-colors duration-150 flex items-center gap-1"
+                        onclick="window.toggleMdpExtra('minim')">
+                    <span id="minim-mdp-toggle-icon">▶</span> Parámetros .mdp adicionales
+                </button>
+                <textarea id="minim-mdp-extra"
+                          placeholder="define = -DPOSRES&#10;energygrps = Protein SOL"
+                          rows="3"
+                          class="hidden w-full font-mono text-xs px-3 py-2 rounded border border-border-dim
+                                 bg-surface-800 text-slate-300 placeholder-slate-700
+                                 focus:border-accent/60 focus:outline-none resize-y"></textarea>
+            </div>
+        </div>
+    </section>
+
+    {# ── 3. Estabilización ─────────────────────────────────────────── #}
+    <section class="rounded-lg border border-border-dim bg-surface-700/50 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-dim bg-surface-800/60">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/>
+                <line x1="6" y1="20" x2="6" y2="14"/>
+            </svg>
+            <span class="font-mono text-xs font-bold text-accent uppercase tracking-widest">Estabilización</span>
+            <span id="stab-count" class="ml-1 font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-500">0 etapas</span>
+        </div>
+        <div class="px-4 py-4 space-y-3">
+            <div id="stab-list" class="space-y-2"></div>
+            <p id="stab-summary" class="font-mono text-xs text-accent/70 hidden"></p>
+            <button type="button" onclick="window.addStabStep()"
+                    class="w-full font-mono text-xs px-4 py-2.5 rounded border border-dashed
+                           border-border-dim text-slate-600 hover:border-accent/40 hover:text-accent/70
+                           transition-all duration-150 flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Agregar etapa de estabilización
+            </button>
+        </div>
+    </section>
+
+    {# ── 4. Producción ─────────────────────────────────────────────── #}
+    <section class="rounded-lg border border-border-dim bg-surface-700/50 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-dim bg-surface-800/60">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span class="font-mono text-xs font-bold text-accent uppercase tracking-widest">Producción</span>
+        </div>
+        <div class="px-4 py-4 space-y-4">
+
+            {# Fila 1: tiempo, paso, pasos, guardar cada #}
+            <div class="flex flex-wrap gap-4 items-end">
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Tiempo (ps)</label>
+                    <input type="number" id="prod-time" value="100" min="1" step="1"
+                           oninput="window.prodSyncFromTime()"
+                           class="run-num-input font-mono text-xs w-28 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Paso (fs)</label>
+                    <input type="number" id="prod-dt" value="1" min="0.5" step="0.5"
+                           oninput="window.prodSyncFromDt()"
+                           class="run-num-input font-mono text-xs w-20 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Pasos</label>
+                    <input type="number" id="prod-nsteps" value="100000" min="1" step="1"
+                           oninput="window.prodSyncFromSteps()"
+                           class="run-num-input font-mono text-xs w-32 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Guardar cada (ps)</label>
+                    <input type="number" id="prod-nstxout" value="10" min="1" step="1"
+                           oninput="window.updateProdSummary()"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+            </div>
+
+            {# Fila 2: ensemble + anisotropico #}
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Ensemble</label>
+                    <div class="flex gap-2">
+                        <button type="button"
+                                class="prod-ensemble-btn font-mono text-xs px-3 py-1.5 rounded border
+                                       border-border-dim text-slate-400 bg-surface-600
+                                       hover:border-accent/40 hover:text-slate-200 transition-all duration-150"
+                                data-ensemble="NVT" onclick="window.selectProdEnsemble(this)">NVT</button>
+                        <button type="button"
+                                class="prod-ensemble-btn font-mono text-xs px-3 py-1.5 rounded border
+                                       border-accent/60 text-accent bg-accent/10 transition-all duration-150"
+                                data-ensemble="NPT" onclick="window.selectProdEnsemble(this)">NPT</button>
+                    </div>
+                </div>
+                <div id="prod-aniso-block" class="hidden flex items-center gap-2 pt-4">
+                    <button type="button" id="prod-aniso-btn" role="switch" aria-checked="false"
+                            onclick="window.toggleAniso('prod')"
+                            class="aniso-btn relative w-8 h-4 rounded-full border border-border-dim bg-surface-600
+                                   transition-colors duration-150 focus:outline-none">
+                        <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-slate-500
+                                     transition-all duration-150 toggle-thumb"></span>
+                    </button>
+                    <span class="font-mono text-xs text-slate-600 aniso-label">Anisotrópico (Z)</span>
+                </div>
+            </div>
+
+            {# Fila 3: temp + pres #}
+            <div class="flex flex-wrap gap-4 items-start">
+                <div class="space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Temp (K)</label>
+                    <input type="number" id="prod-temp" value="300" min="0" step="1"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div id="prod-pressure-block" class="hidden space-y-1.5">
+                    <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Presión (bar)</label>
+                    <input type="number" id="prod-pres" value="1" min="0" step="0.1"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1.5 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+            </div>
+
+            <p id="prod-summary" class="font-mono text-xs text-accent/70"></p>
+
+            <div class="space-y-1.5">
+                <button type="button"
+                        class="font-mono text-xs text-slate-600 hover:text-slate-400 transition-colors duration-150 flex items-center gap-1"
+                        onclick="window.toggleMdpExtra('prod')">
+                    <span id="prod-mdp-toggle-icon">▶</span> Parámetros .mdp adicionales
+                </button>
+                <textarea id="prod-mdp-extra"
+                          placeholder="define = -DPOSRES&#10;freezegrps = Membrane&#10;freezedim = Y Y Y"
+                          rows="3"
+                          class="hidden w-full font-mono text-xs px-3 py-2 rounded border border-border-dim
+                                 bg-surface-800 text-slate-300 placeholder-slate-700
+                                 focus:border-accent/60 focus:outline-none resize-y"></textarea>
+            </div>
+        </div>
+    </section>
+
+    {# ── Botón lanzar ──────────────────────────────────────────────── #}
+    <div class="rounded-lg border border-border-dim bg-surface-800/80 px-5 py-4
+                flex items-center justify-between gap-4">
+        <div>
+            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest mb-1">Pipeline</p>
+            <p class="font-mono text-sm text-slate-300" id="pipeline-summary">
+                — configurá las etapas para continuar
+            </p>
+        </div>
+        <button id="launch-btn" disabled onclick="window.launchPipeline()"
+                class="flex items-center gap-2 font-mono text-xs px-5 py-2.5 rounded-md
+                       border border-border-dim text-slate-600 bg-surface-700/40
+                       cursor-not-allowed select-none transition-all duration-150">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Lanzar pipeline
+        </button>
+    </div>
+
+    {# ── Log de ejecución ──────────────────────────────────────────── #}
+    <div id="launch-log" class="hidden rounded-lg border border-border-dim bg-surface-900 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2 border-b border-border-dim bg-surface-800/60">
+            <span class="font-mono text-xs font-bold text-slate-500 uppercase tracking-widest">Output</span>
+        </div>
+        <div id="launch-log-pre"
+             class="font-mono text-xs text-slate-400 px-4 py-3 space-y-0.5 max-h-64 overflow-y-auto"></div>
+    </div>
+
+</div>{# end space-y-5 #}
+
+{# ── Template para etapas de estabilización ────────────────────────── #}
+<template id="stab-step-template">
+    <div class="stab-step rounded-lg border border-border-dim bg-surface-800/60 overflow-hidden" data-step-id="">
+        <div class="flex items-center gap-2 px-3 py-2 border-b border-border-dim bg-surface-800/80">
+            <span class="font-mono text-xs text-accent font-bold stab-step-label"></span>
+            <div class="flex gap-1.5 ml-auto">
+                <button type="button" onclick="window.moveStabStep(this, -1)"
+                        class="font-mono text-xs text-slate-600 hover:text-slate-300 px-1 transition-colors">↑</button>
+                <button type="button" onclick="window.moveStabStep(this, 1)"
+                        class="font-mono text-xs text-slate-600 hover:text-slate-300 px-1 transition-colors">↓</button>
+                <button type="button" onclick="window.removeStabStep(this)"
+                        class="font-mono text-xs text-slate-600 hover:text-red-400 px-1 transition-colors">✕</button>
+            </div>
+        </div>
+        <div class="px-3 py-3 space-y-3">
+
+            {# Fila 1: tiempo, paso, pasos #}
+            <div class="flex flex-wrap gap-3 items-end">
+                <div class="space-y-1">
+                    <label class="font-mono text-xs text-slate-600 uppercase tracking-widest">Tiempo (ps)</label>
+                    <input type="number" name="time_ps" value="100" min="1" step="1"
+                           oninput="window.stabSyncFromTime(this)"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1">
+                    <label class="font-mono text-xs text-slate-600 uppercase tracking-widest">Paso (fs)</label>
+                    <input type="number" name="dt" value="1" min="0.5" step="0.5"
+                           oninput="window.stabSyncFromDt(this)"
+                           class="run-num-input font-mono text-xs w-20 px-2 py-1 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1">
+                    <label class="font-mono text-xs text-slate-600 uppercase tracking-widest">Pasos</label>
+                    <input type="number" name="nsteps" value="100000" min="1" step="1"
+                           oninput="window.stabSyncFromSteps(this)"
+                           class="run-num-input font-mono text-xs w-28 px-2 py-1 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <p class="stab-step-time font-mono text-xs text-accent/70 pb-1.5"></p>
+            </div>
+
+            {# Fila 2: ensemble + anisotropico #}
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="space-y-1">
+                    <label class="font-mono text-xs text-slate-600 uppercase tracking-widest">Ensemble</label>
+                    <div class="flex gap-1.5">
+                        <button type="button"
+                                class="stab-ensemble-btn font-mono text-xs px-2.5 py-1 rounded border
+                                       border-accent/60 text-accent bg-accent/10 transition-all duration-150"
+                                data-ensemble="NVT" onclick="window.selectStabEnsemble(this)">NVT</button>
+                        <button type="button"
+                                class="stab-ensemble-btn font-mono text-xs px-2.5 py-1 rounded border
+                                       border-border-dim text-slate-400 bg-surface-600
+                                       hover:border-accent/40 hover:text-slate-200 transition-all duration-150"
+                                data-ensemble="NPT" onclick="window.selectStabEnsemble(this)">NPT</button>
+                    </div>
+                </div>
+                <div class="stab-aniso-block hidden flex items-center gap-2 pt-4">
+                    <button type="button" role="switch" aria-checked="false"
+                            onclick="window.toggleAniso(this)"
+                            class="aniso-btn relative w-8 h-4 rounded-full border border-border-dim bg-surface-600
+                                   transition-colors duration-150 focus:outline-none">
+                        <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-slate-500
+                                     transition-all duration-150 toggle-thumb"></span>
+                    </button>
+                    <span class="font-mono text-xs text-slate-600 aniso-label">Anisotrópico (Z)</span>
+                </div>
+            </div>
+
+            {# Fila 3: temp + pres #}
+            <div class="flex flex-wrap gap-3 items-start">
+                <div class="space-y-1">
+                    <label class="font-mono text-xs text-slate-600 uppercase tracking-widest">Temp (K)</label>
+                    <input type="number" name="temp" value="300" min="0" step="1"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+                <div class="space-y-1 stab-pressure-block hidden">
+                    <label class="font-mono text-xs text-slate-600 uppercase tracking-widest">Presión (bar)</label>
+                    <input type="number" name="pres" value="1" min="0" step="0.1"
+                           class="run-num-input font-mono text-xs w-24 px-2 py-1 rounded border border-border-dim
+                                  bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                </div>
+            </div>
+
+            {# MDP extra #}
+            <div class="space-y-1">
+                <button type="button"
+                        class="font-mono text-xs text-slate-600 hover:text-slate-400 transition-colors duration-150 flex items-center gap-1"
+                        onclick="window.toggleStabMdpExtra(this)">
+                    <span class="mdp-toggle-icon">▶</span> Parámetros .mdp adicionales
+                </button>
+                <textarea name="mdp_extra"
+                          placeholder="define = -DPOSRES&#10;energygrps = Protein SOL"
+                          rows="2"
+                          class="mdp-extra-area hidden w-full font-mono text-xs px-3 py-2 rounded border border-border-dim
+                                 bg-surface-800 text-slate-300 placeholder-slate-700
+                                 focus:border-accent/60 focus:outline-none resize-y"></textarea>
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+(function () {
+
+    let stabStepCount = 0;
+    const _accumulatedFiles = {};
+
+    // ── Utilidad: ps → string legible ─────────────────────────────────
+    function fmtTime(ps) {
+        if (!isFinite(ps) || ps <= 0) return '—';
+        if (ps >= 1000) {
+            const ns = ps / 1000;
+            return (ns % 1 === 0 ? ns : parseFloat(ns.toFixed(3))) + ' ns';
+        }
+        return (ps % 1 === 0 ? ps : parseFloat(ps.toFixed(2))) + ' ps';
+    }
+
+    // ── Validación nombre carpeta ──────────────────────────────────────
+    function validateRunName(input) {
+        const val = input.value;
+        const err = document.getElementById('run-name-error');
+        if (val === '') {
+            input.classList.remove('border-red-500/60', 'border-accent/60');
+            input.classList.add('border-border-dim');
+            err.classList.add('hidden');
+        } else if (/^[a-zA-Z0-9_\-]+$/.test(val)) {
+            input.classList.remove('border-red-500/60', 'border-border-dim');
+            input.classList.add('border-accent/60');
+            err.classList.add('hidden');
+        } else {
+            input.classList.remove('border-accent/60', 'border-border-dim');
+            input.classList.add('border-red-500/60');
+            err.textContent = 'Solo letras, números, _ y -';
+            err.classList.remove('hidden');
+        }
+        updateLaunchBtn();
+    }
+
+    // ── Dropzone ──────────────────────────────────────────────────────
+    const dropzone  = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+    const fileList  = document.getElementById('file-list');
+
+    function addFiles(fileListObj) {
+        Array.from(fileListObj).forEach(f => { _accumulatedFiles[f.name] = f; });
+        renderFileList();
+    }
+
+    dropzone.addEventListener('dragover', e => {
+        e.preventDefault();
+        dropzone.classList.add('border-accent/60', 'bg-accent/5');
+    });
+    dropzone.addEventListener('dragleave', () => {
+        dropzone.classList.remove('border-accent/60', 'bg-accent/5');
+    });
+    dropzone.addEventListener('drop', e => {
+        e.preventDefault();
+        dropzone.classList.remove('border-accent/60', 'bg-accent/5');
+        addFiles(e.dataTransfer.files);
+    });
+    fileInput.addEventListener('change', () => addFiles(fileInput.files));
+
+    function renderFileList() {
+        const files = Object.values(_accumulatedFiles);
+        fileList.innerHTML = '';
+        fileList.classList.toggle('hidden', files.length === 0);
+        files.forEach(f => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 font-mono text-xs text-slate-400';
+            row.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-accent/60" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <span class="text-slate-300">${f.name}</span>
+                <span class="text-slate-600">${(f.size/1024).toFixed(1)} KB</span>`;
+            fileList.appendChild(row);
+        });
+        updateLaunchBtn();
+    }
+
+    // ── Hidratación ───────────────────────────────────────────────────
+    function toggleHydrationSkip() {
+        const btn  = document.getElementById('hydration-skip-btn');
+        const body = document.getElementById('hydration-body');
+        const lbl  = document.getElementById('hydration-skip-label');
+        const skip = btn.getAttribute('aria-checked') === 'false';
+        btn.setAttribute('aria-checked', skip ? 'true' : 'false');
+        body.classList.toggle('hidden', skip);
+        lbl.classList.toggle('text-accent', skip);
+        lbl.classList.toggle('text-slate-600', !skip);
+    }
+
+    function selectWaterModel(btn) {
+        document.querySelectorAll('.water-model-btn').forEach(b => {
+            b.classList.remove('border-accent/60','text-accent','bg-accent/10');
+            b.classList.add('border-border-dim','text-slate-400','bg-surface-600');
+        });
+        btn.classList.add('border-accent/60','text-accent','bg-accent/10');
+        btn.classList.remove('border-border-dim','text-slate-400','bg-surface-600');
+    }
+
+    function selectBoxMode(btn) {
+        document.querySelectorAll('.box-mode-btn').forEach(b => {
+            b.classList.remove('border-accent/60','text-accent','bg-accent/10');
+            b.classList.add('border-border-dim','text-slate-400','bg-surface-600');
+        });
+        btn.classList.add('border-accent/60','text-accent','bg-accent/10');
+        btn.classList.remove('border-border-dim','text-slate-400','bg-surface-600');
+        document.getElementById('box-resize-inputs').classList.toggle('hidden', btn.dataset.mode !== 'resize');
+    }
+
+    // ── Minimización ──────────────────────────────────────────────────
+    function selectMinimAlgo(btn) {
+        document.querySelectorAll('.minim-algo-btn').forEach(b => {
+            b.classList.remove('border-accent/60','text-accent','bg-accent/10');
+            b.classList.add('border-border-dim','text-slate-400','bg-surface-600');
+        });
+        btn.classList.add('border-accent/60','text-accent','bg-accent/10');
+        btn.classList.remove('border-border-dim','text-slate-400','bg-surface-600');
+    }
+
+    // ── Producción — sincronización tiempo/paso/pasos ─────────────────
+    function prodSyncFromTime() {
+        const time = parseFloat(document.getElementById('prod-time').value)   || 0;
+        const dt   = parseFloat(document.getElementById('prod-dt').value)     || 1;
+        if (time > 0 && dt > 0)
+            document.getElementById('prod-nsteps').value = Math.round(time * 1000 / dt);
+        updateProdSummary();
+    }
+    function prodSyncFromDt() {
+        const time = parseFloat(document.getElementById('prod-time').value)   || 0;
+        const dt   = parseFloat(document.getElementById('prod-dt').value)     || 1;
+        if (time > 0 && dt > 0)
+            document.getElementById('prod-nsteps').value = Math.round(time * 1000 / dt);
+        updateProdSummary();
+    }
+    function prodSyncFromSteps() {
+        const nsteps = parseInt(document.getElementById('prod-nsteps').value) || 0;
+        const dt     = parseFloat(document.getElementById('prod-dt').value)   || 1;
+        if (nsteps > 0 && dt > 0)
+            document.getElementById('prod-time').value = parseFloat((nsteps * dt / 1000).toFixed(4));
+        updateProdSummary();
+    }
+
+    // ── Producción — ensemble ──────────────────────────────────────────
+    function selectProdEnsemble(btn) {
+        document.querySelectorAll('.prod-ensemble-btn').forEach(b => {
+            b.classList.remove('border-accent/60','text-accent','bg-accent/10');
+            b.classList.add('border-border-dim','text-slate-400','bg-surface-600');
+        });
+        btn.classList.add('border-accent/60','text-accent','bg-accent/10');
+        btn.classList.remove('border-border-dim','text-slate-400','bg-surface-600');
+        const isNPT = btn.dataset.ensemble === 'NPT';
+        document.getElementById('prod-pressure-block').classList.toggle('hidden', !isNPT);
+        document.getElementById('prod-aniso-block').classList.toggle('hidden', !isNPT);
+    }
+
+    function updateProdSummary() {
+        const dt      = parseFloat(document.getElementById('prod-dt').value)      || 0;
+        const nsteps  = parseInt(document.getElementById('prod-nsteps').value)    || 0;
+        const nstxout = parseFloat(document.getElementById('prod-nstxout').value) || 0;
+        const totalPs = dt * nsteps / 1000;
+        const nframes = (nstxout > 0 && totalPs > 0) ? Math.floor(totalPs / nstxout) : 0;
+        const el = document.getElementById('prod-summary');
+        el.textContent = (dt > 0 && nsteps > 0)
+            ? `${fmtTime(totalPs)} de simulación · ${nframes.toLocaleString()} frames`
+            : '';
+    }
+
+    // ── MDP extra toggle ──────────────────────────────────────────────
+    function toggleMdpExtra(prefix) {
+        const area   = document.getElementById(`${prefix}-mdp-extra`);
+        const icon   = document.getElementById(`${prefix}-mdp-toggle-icon`);
+        const hidden = area.classList.toggle('hidden');
+        icon.textContent = hidden ? '▶' : '▼';
+    }
+
+    // ── Estabilización ────────────────────────────────────────────────
+    // ── Estabilización — sincronización tiempo/paso/pasos ─────────────
+    function stabSyncFromTime(input) {
+        const step   = input.closest('.stab-step');
+        const time   = parseFloat(step.querySelector('[name="time_ps"]').value) || 0;
+        const dt     = parseFloat(step.querySelector('[name="dt"]').value)      || 1;
+        if (time > 0 && dt > 0)
+            step.querySelector('[name="nsteps"]').value = Math.round(time * 1000 / dt);
+        updateStabStepTime(input);
+    }
+    function stabSyncFromDt(input) {
+        const step   = input.closest('.stab-step');
+        const time   = parseFloat(step.querySelector('[name="time_ps"]').value) || 0;
+        const dt     = parseFloat(step.querySelector('[name="dt"]').value)      || 1;
+        if (time > 0 && dt > 0)
+            step.querySelector('[name="nsteps"]').value = Math.round(time * 1000 / dt);
+        updateStabStepTime(input);
+    }
+    function stabSyncFromSteps(input) {
+        const step   = input.closest('.stab-step');
+        const nsteps = parseInt(step.querySelector('[name="nsteps"]').value)   || 0;
+        const dt     = parseFloat(step.querySelector('[name="dt"]').value)     || 1;
+        if (nsteps > 0 && dt > 0)
+            step.querySelector('[name="time_ps"]').value = parseFloat((nsteps * dt / 1000).toFixed(4));
+        updateStabStepTime(input);
+    }
+
+    function updateStabStepTime(input) {
+        const step   = input.closest('.stab-step');
+        const dt     = parseFloat(step.querySelector('[name="dt"]').value)     || 0;
+        const nsteps = parseInt(step.querySelector('[name="nsteps"]').value)   || 0;
+        const ps     = dt * nsteps / 1000;
+        step.querySelector('.stab-step-time').textContent = ps > 0 ? fmtTime(ps) : '';
+        updateStabSummary();
+    }
+
+    function addStabStep() {
+        stabStepCount++;
+        const tmpl  = document.getElementById('stab-step-template');
+        const clone = tmpl.content.cloneNode(true);
+        const el    = clone.querySelector('.stab-step');
+        el.dataset.stepId = stabStepCount;
+        document.getElementById('stab-list').appendChild(el);
+        updateStabLabels();
+        updateStabCount();
+        updateStabSummary();
+        updateLaunchBtn();
+    }
+
+    function removeStabStep(btn) {
+        btn.closest('.stab-step').remove();
+        updateStabLabels();
+        updateStabCount();
+        updateStabSummary();
+        updateLaunchBtn();
+    }
+
+    function moveStabStep(btn, dir) {
+        const step = btn.closest('.stab-step');
+        const list = document.getElementById('stab-list');
+        if (dir === -1 && step.previousElementSibling)
+            list.insertBefore(step, step.previousElementSibling);
+        else if (dir === 1 && step.nextElementSibling)
+            list.insertBefore(step.nextElementSibling, step);
+        updateStabLabels();
+    }
+
+    function updateStabLabels() {
+        const counters = {};
+        document.querySelectorAll('.stab-step').forEach(step => {
+            const ensBtn = step.querySelector('.stab-ensemble-btn.border-accent\\/60');
+            const ens    = ensBtn ? ensBtn.dataset.ensemble : 'NVT';
+            counters[ens] = (counters[ens] || 0) + 1;
+            step.querySelector('.stab-step-label').textContent = `${ens} ${counters[ens]}`;
+        });
+    }
+
+    function updateStabCount() {
+        const n = document.querySelectorAll('.stab-step').length;
+        document.getElementById('stab-count').textContent =
+            n === 0 ? '0 etapas' : `${n} etapa${n > 1 ? 's' : ''}`;
+    }
+
+    function selectStabEnsemble(btn) {
+        const group = btn.closest('.stab-step');
+        group.querySelectorAll('.stab-ensemble-btn').forEach(b => {
+            b.classList.remove('border-accent/60','text-accent','bg-accent/10');
+            b.classList.add('border-border-dim','text-slate-400','bg-surface-600');
+        });
+        btn.classList.add('border-accent/60','text-accent','bg-accent/10');
+        btn.classList.remove('border-border-dim','text-slate-400','bg-surface-600');
+        const isNPT = btn.dataset.ensemble === 'NPT';
+        group.querySelector('.stab-pressure-block').classList.toggle('hidden', !isNPT);
+        group.querySelector('.stab-aniso-block').classList.toggle('hidden', !isNPT);
+        updateStabLabels();
+    }
+
+    function updateStabSummary() {
+        const steps = document.querySelectorAll('.stab-step');
+        const el    = document.getElementById('stab-summary');
+        if (steps.length === 0) { el.classList.add('hidden'); return; }
+        let totalPs = 0;
+        steps.forEach(step => {
+            const dt     = parseFloat(step.querySelector('[name="dt"]').value)     || 0;
+            const nsteps = parseInt(step.querySelector('[name="nsteps"]').value)   || 0;
+            totalPs += dt * nsteps / 1000;
+        });
+        el.textContent = `Total estabilización: ${fmtTime(totalPs)}`;
+        el.classList.remove('hidden');
+    }
+
+    function toggleAniso(target) {
+        const btn = typeof target === 'string'
+            ? document.getElementById(`${target}-aniso-btn`)
+            : target;
+        const active = btn.getAttribute('aria-checked') === 'false';
+        btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    }
+
+    function toggleStabMdpExtra(btn) {
+        const area   = btn.closest('.space-y-1').querySelector('.mdp-extra-area');
+        const icon   = btn.querySelector('.mdp-toggle-icon');
+        const hidden = area.classList.toggle('hidden');
+        icon.textContent = hidden ? '▶' : '▼';
+    }
+
+    // ── Botón Lanzar ──────────────────────────────────────────────────
+    function updateLaunchBtn() {
+        const files    = Object.values(_accumulatedFiles);
+        const hasFiles = files.length > 0;
+        const nameVal  = document.getElementById('run-name').value;
+        const nameOk   = /^[a-zA-Z0-9_\-]+$/.test(nameVal);
+        const ready    = hasFiles && nameOk;
+        const btn      = document.getElementById('launch-btn');
+        if (ready) {
+            btn.disabled = false;
+            btn.classList.remove('cursor-not-allowed','text-slate-600','border-border-dim','bg-surface-700/40','select-none');
+            btn.classList.add('cursor-pointer','text-accent','border-accent/40','bg-accent/10',
+                              'hover:bg-accent/20','hover:border-accent/70');
+        } else {
+            btn.disabled = true;
+            btn.classList.add('cursor-not-allowed','text-slate-600','border-border-dim','bg-surface-700/40','select-none');
+            btn.classList.remove('cursor-pointer','text-accent','border-accent/40','bg-accent/10',
+                                 'hover:bg-accent/20','hover:border-accent/70');
+        }
+        const nStab   = document.querySelectorAll('.stab-step').length;
+        const stabTxt = nStab === 0
+            ? 'sin estabilización'
+            : `${nStab} etapa${nStab !== 1 ? 's' : ''} de estabilización`;
+        document.getElementById('pipeline-summary').textContent = ready
+            ? `hidratación → minimización → ${stabTxt} → producción → minimización final`
+            : !hasFiles ? '— cargá los archivos para continuar'
+                        : '— ingresá un nombre de run válido';
+    }
+
+    // ── Exponer al exterior (ANTES de que cualquier onclick pueda dispararse) ─
+    window.toggleAniso        = toggleAniso;
+    window.updateStabSummary  = updateStabSummary;
+    window.stabSyncFromTime   = stabSyncFromTime;
+    window.stabSyncFromDt     = stabSyncFromDt;
+    window.stabSyncFromSteps  = stabSyncFromSteps;
+    window.prodSyncFromTime   = prodSyncFromTime;
+    window.prodSyncFromDt     = prodSyncFromDt;
+    window.prodSyncFromSteps  = prodSyncFromSteps;
+    window.validateRunName    = validateRunName;
+    window.toggleHydrationSkip = toggleHydrationSkip;
+    window.selectWaterModel   = selectWaterModel;
+    window.selectBoxMode      = selectBoxMode;
+    window.selectMinimAlgo    = selectMinimAlgo;
+    window.selectProdEnsemble = selectProdEnsemble;
+    window.updateProdSummary  = updateProdSummary;
+    window.toggleMdpExtra     = toggleMdpExtra;
+    window.addStabStep        = addStabStep;
+    window.removeStabStep     = removeStabStep;
+    window.moveStabStep       = moveStabStep;
+    window.selectStabEnsemble = selectStabEnsemble;
+    window.updateStabStepTime = updateStabStepTime;
+    window.toggleStabMdpExtra = toggleStabMdpExtra;
+
+    window.launchPipeline = async function () {
+        const btn    = document.getElementById('launch-btn');
+        const logBox = document.getElementById('launch-log');
+        const logPre = document.getElementById('launch-log-pre');
+
+        const files   = Object.values(_accumulatedFiles);
+        const groFile = files.find(f => f.name.endsWith('.gro'));
+        const topFile = files.find(f => f.name.endsWith('.top'));
+        if (!groFile || !topFile) {
+            alert('Necesitás subir un .gro y un .top.');
+            return;
+        }
+
+        const runName    = document.getElementById('run-name').value;
+        const waterModel = document.querySelector('.water-model-btn.border-accent\\/60')?.dataset.model || 'TIP3P';
+        const boxMode    = document.querySelector('.box-mode-btn.border-accent\\/60')?.dataset.mode   || 'actual';
+        const skipHydration = document.getElementById('hydration-skip-btn').getAttribute('aria-checked') === 'true';
+
+        const fd = new FormData();
+        fd.append('run_name',       runName);
+        fd.append('water_model',    waterModel);
+        fd.append('box_mode',       boxMode);
+        fd.append('skip_hydration', skipHydration ? '1' : '0');
+        fd.append('gro_file',       groFile);
+        fd.append('top_file',       topFile);
+
+        if (boxMode === 'resize') {
+            const inputs = document.querySelectorAll('#box-resize-inputs input');
+            fd.append('box_x', inputs[0].value);
+            fd.append('box_y', inputs[1].value);
+            fd.append('box_z', inputs[2].value);
+        }
+
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+        logBox.classList.remove('hidden');
+        logPre.innerHTML = '';
+
+        const appendLog = (text, cls = '') => {
+            const line = document.createElement('div');
+            if (cls) line.className = cls;
+            line.textContent = text;
+            logPre.appendChild(line);
+            logPre.scrollTop = logPre.scrollHeight;
+        };
+
+        let res;
+        try {
+            res = await fetch('/api/launch/solvate', { method: 'POST', body: fd });
+        } catch (err) {
+            appendLog(`Error de red: ${err}`, 'text-red-400');
+            btn.disabled = false; btn.classList.remove('opacity-50');
+            return;
+        }
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            appendLog(`Error: ${data.detail?.error || res.statusText}`, 'text-red-400');
+            btn.disabled = false; btn.classList.remove('opacity-50');
+            return;
+        }
+
+        appendLog('Pipeline lanzado en screen. Esperando progreso...');
+
+        const evtSource = new EventSource(`/api/launch/${runName}/stream`);
+        evtSource.onmessage        = e => appendLog(e.data);
+        evtSource.addEventListener('start',        e => appendLog('▶ ' + e.data, 'text-accent'));
+        evtSource.addEventListener('done',         e => {
+            appendLog('✓ ' + e.data, 'text-green-400');
+            evtSource.close();
+            btn.disabled = false; btn.classList.remove('opacity-50');
+        });
+        evtSource.addEventListener('error_detail', e => appendLog(e.data, 'text-red-300'));
+        evtSource.addEventListener('error',        e => {
+            appendLog('✕ ' + e.data, 'text-red-400');
+            evtSource.close();
+            btn.disabled = false; btn.classList.remove('opacity-50');
+        });
+        evtSource.onerror = () => {
+            appendLog('Conexión SSE cerrada.', 'text-slate-600');
+            evtSource.close();
+            btn.disabled = false; btn.classList.remove('opacity-50');
+        };
+    };
+
+    // ── Init ──────────────────────────────────────────────────────────
+    document.querySelector('.water-model-btn[data-model="TIP3P"]')?.click();
+    document.querySelector('.minim-algo-btn[data-algo="steep"]')?.click();
+    document.querySelector('.prod-ensemble-btn[data-ensemble="NPT"]')?.click();
+    updateProdSummary();
+    updateLaunchBtn();
+
+})();
+</script>
