@@ -12,20 +12,6 @@ pip-log.txt
 pip-delete-this-directory.txt
 .env
 
-# === GROMACS & Sistemas de Simulación ===
-data/sistemas/*
-*.gro
-*.top
-*.itp
-*.ndx
-*.mdp
-*.tpr
-*.xtc
-*.trr
-*.edr
-*.log
-*.cpt
-
 # === Datos de Salida y Gráficos ===
 data/resultados/*
 *.csv
