@@ -1,0 +1,29 @@
+# Water model atomtypes for GROMACS [ atomtypes ] section.
+# Each key matches the water_model string used in the frontend.
+# Lines are injected verbatim into the topology.
+
+[tip3p]
+lines = [
+    " OW       OW         15.99940  0.00000   A     3.15061e-01   6.36400e-01 ; From WaterModels web",
+    " HW       HW          1.00800  0.00000   A     0.00000e+00   0.00000e+00",
+]
+
+["SPC/E"]
+lines = [
+    " OW       OW         15.99940  0.00000   A     3.16600e-01   6.50000e-01 ; From WaterModels web",
+    " HW       HW          1.00800  0.00000   A     0.00000e+00   0.00000e+00",
+]
+
+["TIP4P/2005"]
+lines = [
+    " OW       OW         15.99940  0.00000   A     3.15890e-01   7.74900e-01 ; From WaterModels web",
+    " HW       HW          1.00800  0.00000   A     0.00000e+00   0.00000e+00",
+    " MW       MW          0.00000  0.00000   D     0.00000e+00   0.00000e+00",
+]
+
+["TIP5P/2018"]
+lines = [
+    " OW       OW         15.99940  0.00000   A     3.14500e-01   7.90000e-01 ; From https://doi.org/10.1063/1.5070137",
+    " HW       HW          1.00800  0.00000   A     0.00000e+00   0.00000e+00",
+    " MW       MW          0.00000  0.00000   D     0.00000e+00   0.00000e+00",
+]
