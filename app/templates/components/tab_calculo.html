@@ -84,6 +84,10 @@
                                   text-slate-300 rounded-md px-3 py-2 placeholder-slate-600
                                   focus:outline-none focus:border-accent/60 transition-colors"
                            oninput="window.v4s.scheduleAtomSelection(this.value)" />
+                    <p class="font-mono text-xs text-slate-600">
+                        Escribí <span class="text-accent/70">All</span> para seleccionar todos los átomos del soluto.
+                        Solo compatible con monocapa y esferas por átomo.
+                    </p>
                     <div id="atom-selection-errors" class="space-y-1"></div>
                     <p id="atom-selection-count" class="font-mono text-xs text-slate-500 hidden"></p>
                 </div>
@@ -570,13 +574,26 @@
         atomSelectionTimer = setTimeout(() => applyAtomSelection(value), 800);
     }
 
+    // Estado global para modo ALL
+    let isAllMode = false;
+
     function applyAtomSelection(value) {
         const errorsEl = document.getElementById('atom-selection-errors');
         const countEl  = document.getElementById('atom-selection-count');
         errorsEl.innerHTML = '';
         countEl.classList.add('hidden');
 
-        const names    = value.trim().split(/\s+/).filter(Boolean);
+        const trimmed = value.trim();
+
+        // Detectar modo ALL
+        if (trimmed.toLowerCase() === 'all' || trimmed.toLowerCase() === 'todos') {
+            activateAllMode();
+            return;
+        } else if (isAllMode) {
+            deactivateAllMode();
+        }
+
+        const names    = trimmed.split(/\s+/).filter(Boolean);
         const knownNames = new Set(allAtoms.map(a => a.n));
 
         if (names.length === 0) {
@@ -585,13 +602,13 @@
             return;
         }
 
-        const unknown  = names.filter(n => !knownNames.has(n));
-        const valid    = names.filter(n =>  knownNames.has(n));
+        const unknown = names.filter(n => !knownNames.has(n));
+        const valid   = names.filter(n =>  knownNames.has(n));
 
         unknown.forEach(name => {
             const el = document.createElement('p');
             el.className = 'font-mono text-xs text-red-400';
-            el.textContent = `Átomo no reconocido: ${name}`;
+            el.textContent = 'Átomo no reconocido: ' + name;
             errorsEl.appendChild(el);
         });
 
@@ -599,11 +616,60 @@
         renderAtoms();
 
         if (valid.length > 0) {
-            countEl.textContent = `${valid.length} átomo${valid.length > 1 ? 's' : ''} seleccionado${valid.length > 1 ? 's' : ''}`;
+            countEl.textContent = valid.length + ' átomo' + (valid.length > 1 ? 's' : '') + ' seleccionado' + (valid.length > 1 ? 's' : '');
             countEl.classList.remove('hidden');
         }
-        // Redibujar geometria si el autocentrado esta activo
         if (document.getElementById('sphere-autocenter')?.checked) readGeoAndDraw();
+    }
+
+    function activateAllMode() {
+        isAllMode = true;
+        // Seleccionar todos los atomos en Three.js
+        selectedAtomNames = new Set(allAtoms.map(a => a.n));
+        renderAtoms();
+
+        const countEl = document.getElementById('atom-selection-count');
+        countEl.textContent = allAtoms.length + ' átomos seleccionados (modo All)';
+        countEl.classList.remove('hidden');
+
+        // Forzar geometria a "esfera" y activar autocentrado, o "monocapa"
+        const geoSel  = document.getElementById('geometry-select');
+        const monoSel = document.getElementById('monolayer-select');
+
+        // Deshabilitar cubo, cilindro, esfera simple
+        geoSel.value = 'sphere';
+        switchGeometry('sphere');
+        ['cube', 'cylinder'].forEach(v => {
+            const opt = geoSel.querySelector('option[value="' + v + '"]');
+            if (opt) opt.disabled = true;
+        });
+
+        // Forzar autocentrado y desactivar posicion manual
+        const sw = document.getElementById('sphere-autocenter');
+        if (sw) { sw.checked = true; sw.disabled = false; toggleAutocenter(true); }
+
+        // Asegurar que monolayer esté en selection
+        monoSel.value = 'selection';
+        toggleAtomSelection('selection');
+
+        // No dibujar esferas (ahorro de RAM)
+        clearGeoMesh();
+
+        // Indicar al usuario
+        const errorsEl = document.getElementById('atom-selection-errors');
+        const info = document.createElement('p');
+        info.className = 'font-mono text-xs text-accent/70';
+        info.textContent = 'Modo All: ' + allAtoms.length + ' esferas — visualización omitida para ahorrar RAM.';
+        errorsEl.appendChild(info);
+    }
+
+    function deactivateAllMode() {
+        isAllMode = false;
+        // Rehabilitar opciones de geometría
+        ['cube', 'cylinder', 'sphere'].forEach(v => {
+            const opt = document.getElementById('geometry-select')?.querySelector('option[value="' + v + '"]');
+            if (opt) opt.disabled = false;
+        });
     }
 
     // --------------------------------------------------------
@@ -767,7 +833,7 @@
             output_mode:    document.querySelector('input[name="output_mode"]:checked')?.value || 'mean',
             save_mol_count: document.getElementById('save-mol-count')?.checked || false,
             scope:          document.getElementById('monolayer-select')?.value || 'all',
-            atom_selection: vStr('atom-selection-text'),
+            atom_selection: isAllMode ? 'ALL' : vStr('atom-selection-text'),
             geometry:       geo,
             // Cubo
             cube_xmin: v('cube-xmin'), cube_xmax: v('cube-xmax'),

@@ -1,8 +1,10 @@
 import json
 import shutil
+import asyncio
 import subprocess
 import tomli_w
 import uvicorn
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from fastapi import Body
 from pathlib import Path
@@ -11,6 +13,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from .routes_launch import launch_router
+from .routes_queue  import queue_router
+from . import queue_worker as qw
 
 
 try:
@@ -21,8 +25,34 @@ except ImportError:
 BASE_DIR  = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR.parent / "data"
 
-app = FastAPI(title="V4S-Orchestrator")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ────────────────────────────────────────────────────────
+    if DATA_PATH.exists():
+        print(f"[V4S] DATA_PATH encontrado: {DATA_PATH}")
+    else:
+        print(f"[V4S] AVISO: La carpeta de datos no existe en '{DATA_PATH}'.")
+
+    # Initialize queue worker
+    qw.QUEUE_DIR = DATA_PATH / "queue"
+    worker_task  = asyncio.create_task(qw.worker_loop())
+    print("[V4S] Queue worker iniciado.")
+
+    yield
+
+    # ── Shutdown ───────────────────────────────────────────────────────
+    worker_task.cancel()
+    try:
+        await worker_task
+    except asyncio.CancelledError:
+        pass
+    print("[V4S] Queue worker detenido.")
+
+
+app = FastAPI(title="V4S-Orchestrator", lifespan=lifespan)
 app.include_router(launch_router)
+app.include_router(queue_router)
 
 app.mount(
     "/static",
@@ -117,20 +147,6 @@ def _ensure_xyz(system_dir: Path) -> bool:
             return False
 
     return xyz.exists()
-
-
-# ---------------------------------------------------------------------------
-# Startup
-# ---------------------------------------------------------------------------
-
-@app.on_event("startup")
-async def startup_checks() -> None:
-    if DATA_PATH.exists():
-        print(f"[V4S] DATA_PATH encontrado: {DATA_PATH}")
-    else:
-        print(f"[V4S] AVISO: La carpeta de datos no existe en '{DATA_PATH}'.")
-        print( "[V4S]        El servidor continua, pero las funciones que lean")
-        print( "[V4S]        archivos externos fallaran hasta que la crees.")
 
 
 # ---------------------------------------------------------------------------

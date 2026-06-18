@@ -827,10 +827,35 @@
             return;
         }
 
-        const runName    = document.getElementById('run-name').value;
-        const waterModel = document.querySelector('.water-model-btn.border-accent\\/60')?.dataset.model || 'TIP3P';
-        const boxMode    = document.querySelector('.box-mode-btn.border-accent\\/60')?.dataset.mode   || 'actual';
+        const runName       = document.getElementById('run-name').value;
+        const waterModel    = document.querySelector('.water-model-btn.border-accent\\/60')?.dataset.model || 'TIP3P';
+        const boxMode       = document.querySelector('.box-mode-btn.border-accent\\/60')?.dataset.mode   || 'actual';
         const skipHydration = document.getElementById('hydration-skip-btn').getAttribute('aria-checked') === 'true';
+
+        // ── Collect equilibration steps ────────────────────────────────
+        const equilSteps = [];
+        const counters   = {};
+        document.querySelectorAll('.stab-step').forEach(step => {
+            const ensBtn   = step.querySelector('.stab-ensemble-btn.border-accent\\/60');
+            const ensemble = ensBtn ? ensBtn.dataset.ensemble : 'NVT';
+            counters[ensemble] = (counters[ensemble] || 0) + 1;
+            const label    = `${ensemble}_${counters[ensemble]}`;
+            const anisoBtn = step.querySelector('.aniso-btn');
+            equilSteps.push({
+                label,
+                ensemble,
+                nsteps:    parseInt(step.querySelector('[name="nsteps"]').value)   || 100000,
+                dt:        parseFloat(step.querySelector('[name="dt"]').value)     || 1.0,
+                temp:      parseFloat(step.querySelector('[name="temp"]').value)   || 300.0,
+                pres:      parseFloat(step.querySelector('[name="pres"]')?.value)  || 1.0,
+                aniso:     anisoBtn?.getAttribute('aria-checked') === 'true',
+                extra_mdp: step.querySelector('[name="mdp_extra"]')?.value || '',
+            });
+        });
+
+        // ── Collect production config ──────────────────────────────────
+        const prodEnsemble = document.querySelector('.prod-ensemble-btn.border-accent\\/60')?.dataset.ensemble || 'NPT';
+        const prodAniso    = document.getElementById('prod-aniso-btn')?.getAttribute('aria-checked') === 'true';
 
         const fd = new FormData();
         fd.append('run_name',       runName);
@@ -846,6 +871,26 @@
             fd.append('box_y', inputs[1].value);
             fd.append('box_z', inputs[2].value);
         }
+
+        // Minimization
+        const minimAlgo = document.querySelector('.minim-algo-btn.border-accent\\/60')?.dataset.algo || 'steep';
+        fd.append('minim_algo',   minimAlgo);
+        fd.append('minim_nsteps', document.getElementById('minim-nsteps').value);
+        fd.append('minim_emtol',  document.getElementById('minim-emtol').value);
+        fd.append('minim_extra',  document.getElementById('minim-mdp-extra').value);
+
+        // Equilibration
+        fd.append('equil_steps', JSON.stringify(equilSteps));
+
+        // Production
+        fd.append('prod_ensemble', prodEnsemble);
+        fd.append('prod_nsteps',   document.getElementById('prod-nsteps').value);
+        fd.append('prod_dt',       document.getElementById('prod-dt').value);
+        fd.append('prod_temp',     document.getElementById('prod-temp').value);
+        fd.append('prod_pres',     document.getElementById('prod-pres')?.value || '1');
+        fd.append('prod_nstxout',  document.getElementById('prod-nstxout').value);
+        fd.append('prod_aniso',    prodAniso ? '1' : '0');
+        fd.append('prod_extra',    document.getElementById('prod-mdp-extra').value);
 
         btn.disabled = true;
         btn.classList.add('opacity-50');
