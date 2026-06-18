@@ -179,6 +179,8 @@ struct RunConfig {
     double      sph_cx, sph_cy, sph_cz, sph_radius;
     bool        sph_autocenter= false;
 
+    bool        all_mode= false;
+
 
     void init(fs::path dir) {
         run_dir= dir;
@@ -198,6 +200,7 @@ struct RunConfig {
 
         scope          = getString(doc, "agregacion", "scope",          "all");
         atom_selection = getString(doc, "agregacion", "atom_selection", "");
+        all_mode= (scope == "selection") && (atom_selection == "ALL");
 
         geometry       = getString(doc, "geometria", "type", "cube");
         cube_xmin      = getDouble(doc, "geometria", "xmin");

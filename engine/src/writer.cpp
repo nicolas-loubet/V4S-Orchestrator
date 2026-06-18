@@ -268,6 +268,7 @@ namespace Writer {
             csvw.writeHeader(headers);
 
             for(int ia= 0; ia < (int)atoms.size(); ia++) {
+                cout << ia << "/" << atoms.size() << endl;
                 vector<string> row= {atoms[ia]};
                 for(int iv= 1; iv <= 4; iv++) if(show_ViS[iv-1]) {
                     row.push_back(to_string(data[ia][iv-1]));

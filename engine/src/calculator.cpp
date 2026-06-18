@@ -118,7 +118,16 @@ void runCalculation(RunConfig& cfg) {
     bool filtering_monolayer= cfg.scope == "monolayer";
 
     vector<string> list_atom_names;
-    if(using_sph_autocenter) list_atom_names= splitNames(cfg.atom_selection);
+    
+    if(cfg.all_mode) {
+        Configuration conf_0(cr, (cfg.sistema_path / files[0].second).string(), ti);
+        for(int m= 1; m <= ti.num_solutes; m++)
+            for(int a= 1; a <= conf_0.getMolec(m).getNAtoms(); a++)
+                list_atom_names.push_back( get<1>(ti.atom_type_name_charge_mass[m-1].at(a)) );
+        cfg.atom_selection= "";
+        for(string name: list_atom_names) cfg.atom_selection+= name + " ";
+        cfg.atom_selection= cfg.atom_selection.substr(0, cfg.atom_selection.size()-1);
+    } else if(using_sph_autocenter) list_atom_names= splitNames(cfg.atom_selection);
 
     writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, "Iniciando primeros frames...");
     
@@ -134,6 +143,7 @@ void runCalculation(RunConfig& cfg) {
     }
 
     for(const auto& [frame_number, filename]: files) {
+        if(frame_number % 20 != 0) continue;
         if(frame_number % 20 == 0 && frame_number > 0) { writeStatusFromTime(cfg, progress, eta, frame_number, start_time, files[files.size()-1].first); }
 
         Configuration conf(cr, (cfg.sistema_path / filename).string(), ti);
@@ -149,9 +159,10 @@ void runCalculation(RunConfig& cfg) {
             vector<Real> vis= conf.getInteractionsPerSite(m);
 
             if(using_sph_autocenter) {
-                vector<int> list_i_sph= extractListFromInt(res, filter->getN());
-                for(int i_sph: list_i_sph)
-                    writer->accumulate(frame_number, i_sph+1, vis);
+                //vector<int> list_i_sph= extractListFromInt(res, filter->getN());
+                //for(int i_sph: list_i_sph)
+                //    writer->accumulate(frame_number, i_sph+1, vis);
+                writer->accumulate(frame_number, res, vis);
             }
             writer->accumulate(frame_number, 0, vis);
         }

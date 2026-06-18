@@ -54,6 +54,7 @@ namespace Filter {
 
             int getN() const override { return N; }
 
+            /* This version puts each molecule in ALL the spheres
             int isInside(const Vector& pos, const Vector& bounds) const override {
                 int output= 0;
                 for(int i= 0; i < N; i++)
@@ -61,6 +62,19 @@ namespace Filter {
                         output*= N;
                         output+= i+1;
                     }
+                return output;
+            }*/
+
+            // This version puts each molecule in the closest sphere
+            int isInside(const Vector& pos, const Vector& bounds) const override {
+                int output= 0;
+                Real min_dist= radius+1.0;
+                for(int i= 0; i < N; i++) {
+                    Real d= distancePBC(pos,centers[i],bounds);
+                    if(d > min_dist) continue;
+                    min_dist= d;
+                    output= i+1;
+                }
                 return output;
             }
     };

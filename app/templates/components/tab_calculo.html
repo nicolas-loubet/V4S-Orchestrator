@@ -659,7 +659,7 @@
         const errorsEl = document.getElementById('atom-selection-errors');
         const info = document.createElement('p');
         info.className = 'font-mono text-xs text-accent/70';
-        info.textContent = 'Modo All: ' + allAtoms.length + ' esferas — visualización omitida para ahorrar RAM.';
+        info.textContent = 'Modo All: ' + allAtoms.length + ' esferas.';
         errorsEl.appendChild(info);
     }
 
@@ -743,6 +743,7 @@
     }
 
     function readGeoAndDraw() {
+        if (isAllMode) return;  // en modo All no se dibuja ninguna geometria
         const type       = document.getElementById('geometry-select').value;
         const v          = id => parseFloat(document.getElementById(id)?.value) || 0;
         const autocenter = document.getElementById('sphere-autocenter')?.checked;
