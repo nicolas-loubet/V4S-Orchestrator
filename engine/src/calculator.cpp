@@ -143,7 +143,6 @@ void runCalculation(RunConfig& cfg) {
     }
 
     for(const auto& [frame_number, filename]: files) {
-        if(frame_number % 20 != 0) continue;
         if(frame_number % 20 == 0 && frame_number > 0) { writeStatusFromTime(cfg, progress, eta, frame_number, start_time, files[files.size()-1].first); }
 
         Configuration conf(cr, (cfg.sistema_path / filename).string(), ti);

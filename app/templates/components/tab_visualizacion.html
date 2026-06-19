@@ -288,6 +288,135 @@
 
 </div>
 
+    <!-- Escala de color 3D (collapsible) -->
+    <div id="color3d-panel" class="hidden space-y-4 mt-8">
+
+        <div class="border-b border-border-dim pb-3">
+            <button onclick="window.viz.toggleColor3D()"
+                    class="flex items-center justify-between w-full group">
+                <p class="font-mono text-sm font-bold text-accent tracking-wide">Escala de color 3D</p>
+                <svg id="color3d-chevron" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-500 transition-transform duration-150"
+                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </button>
+        </div>
+
+        <div id="color3d-body" class="hidden space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+                <!-- Controles izquierda -->
+                <div class="space-y-4">
+
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Parámetro</label>
+                        <select id="c3d-param"
+                                class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                       text-slate-300 rounded-md px-3 py-2
+                                       focus:outline-none focus:border-accent/60 transition-colors">
+                        </select>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Tipo de valor</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="c3d-val-type" value="simple" checked
+                                       class="w-3.5 h-3.5 accent-sky-400 cursor-pointer" />
+                                <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Media</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer group">
+                                <input type="radio" name="c3d-val-type" value="fmean"
+                                       class="w-3.5 h-3.5 accent-sky-400 cursor-pointer" />
+                                <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Media por frames</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Escala de color</label>
+                        <select id="c3d-colormap"
+                                class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                       text-slate-300 rounded-md px-3 py-2
+                                       focus:outline-none focus:border-accent/60 transition-colors">
+                            <option value="coolwarm">coolwarm</option>
+                            <option value="RdBu_r">RdBu (divergente)</option>
+                            <option value="viridis">viridis</option>
+                            <option value="plasma">plasma</option>
+                            <option value="inferno">inferno</option>
+                            <option value="magma">magma</option>
+                            <option value="seismic">seismic</option>
+                            <option value="bwr">bwr</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Mínimo</label>
+                            <input type="number" id="c3d-vmin" step="0.1" placeholder="Auto"
+                                   class="geo-input w-full" />
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Máximo</label>
+                            <input type="number" id="c3d-vmax" step="0.1" placeholder="Auto"
+                                   class="geo-input w-full" />
+                        </div>
+                    </div>
+
+                    <button onclick="window.viz.renderColor3D()"
+                            class="w-full font-mono text-xs py-2 rounded-md
+                                   bg-accent/10 border border-accent/40 text-accent
+                                   hover:bg-accent/20 transition-all duration-150">
+                        Renderizar
+                    </button>
+
+                    <!-- Leyenda de color -->
+                    <div id="c3d-legend" class="hidden space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Escala</label>
+                        <canvas id="c3d-legend-canvas" class="w-full rounded block" style="height: 16px; min-height: 16px;"></canvas>
+                        <div class="flex justify-between font-mono text-xs text-slate-500">
+                            <span id="c3d-legend-min"></span>
+                            <span id="c3d-legend-max"></span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Canvas Three.js derecha -->
+                <div class="flex flex-col gap-3">
+                    <div class="rounded-lg border border-border-dim bg-surface-900 overflow-hidden relative"
+                         style="height: 380px;">
+                        <canvas id="c3d-viewport" class="w-full h-full block"></canvas>
+                        <div id="c3d-empty"
+                             class="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-slate-700"
+                                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                            </svg>
+                            <p class="font-mono text-xs text-slate-600 uppercase tracking-widest">Apretá Renderizar</p>
+                        </div>
+                        <div id="c3d-loading"
+                             class="absolute inset-0 hidden flex-col items-center justify-center gap-2">
+                            <div class="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin"></div>
+                            <p class="font-mono text-xs text-slate-500">Cargando...</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4 px-1">
+                        <p class="font-mono text-xs text-slate-600">Rotar: arrastrar &nbsp;|&nbsp; Zoom: scroll</p>
+                        <button onclick="window.viz.resetColor3DCamera()"
+                                class="ml-auto font-mono text-xs px-3 py-1 rounded border border-border-dim
+                                       text-slate-500 hover:text-accent hover:border-accent/40 transition-colors">
+                            Reset cámara
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 <!-- Espacio para scroll -->
 <div style="height: 40vh"></div>
 
@@ -295,6 +424,20 @@
     .run-num-input::-webkit-inner-spin-button,
     .run-num-input::-webkit-outer-spin-button { opacity: 0.15; }
     .run-num-input[type=number] { -moz-appearance: textfield; }
+    .geo-input {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.75rem;
+        background-color: #1c2740;
+        border: 1px solid #1e2d45;
+        color: #cbd5e1;
+        border-radius: 0.375rem;
+        padding: 0.375rem 0.625rem;
+        transition: border-color 0.15s;
+    }
+    .geo-input:focus   { outline: none; border-color: rgba(56,189,248,0.5); }
+    .geo-input::-webkit-inner-spin-button,
+    .geo-input::-webkit-outer-spin-button { opacity: 0.15; }
+    .geo-input[type=number] { -moz-appearance: textfield; }
 </style>
 
 <script>
@@ -427,6 +570,7 @@
                     addTimeColumn(runMeta.dt || 0);
                 }
                 configureSimpleMode(runMeta, files);
+                if (runMeta.output_type === 'mean_atoms') configureColor3DPanel(runMeta, Object.keys(loadedCSVs)[0]);
                 // Actualizar placeholder del editor con ejemplo relevante
                 if (window._cmEditor) {
                     const ph = getPlaceholder(runMeta);
@@ -565,7 +709,7 @@
             L.push("y_err  = None");
         }
         L.push("x      = range(len(atoms))");
-        L.push("colors = ['#3b5675' if a != 'All' else '#2d5fa3' for a in atoms]");
+        L.push("colors = ['#4f86c6' if a != 'All' else '#2d5fa3' for a in atoms]");
         L.push("fig, ax1 = plt.subplots()");
         L.push("ax1.bar(x, y_vals, color=colors,");
         L.push("        yerr=y_err, capsize=5, error_kw=dict(ecolor='#94a3b8', lw=1.2))");
@@ -576,7 +720,7 @@
         if (showN) {
             L.push("if 'N' in df.columns:");
             L.push("    ax2 = ax1.twinx()");
-            L.push("    ax2.plot(list(x), df['N'].tolist(), color='#f59e0b', marker='o', linewidth=3, markersize=6)");
+            L.push("    ax2.plot(list(x), df['N'].tolist(), color='#f59e0b', marker='o', linewidth=1.5, markersize=4)");
             L.push("    ax2.set_ylabel('N', color='#f59e0b')");
             L.push("    ax2.tick_params(axis='y', labelcolor='#f59e0b')");
         }
@@ -841,7 +985,263 @@
         a.click();
     }
 
-    window.viz = { loadRun, toggleDevMode, runCode, downloadFigure, downloadCSV, onCSVSelect, runSimplePlot, saveVizState, restoreVizState };
+    // --------------------------------------------------------
+    // ESCALA DE COLOR 3D
+    // --------------------------------------------------------
+    let c3dScene = null, c3dCamera = null, c3dRenderer = null;
+    let c3dSpherical = { theta: 0.4, phi: 1.1, radius: 80 };
+    let c3dCentroid  = { x: 0, y: 0, z: 0 };
+    let c3dDragging  = false, c3dPrevMouse = { x: 0, y: 0 };
+    let c3dOpen      = false;
+
+    // Colormaps — mapeados a gradientes CSS + función de interpolación
+    const CMAPS = {
+        coolwarm: [[59,76,192],[221,220,219],[180,4,38]],
+        RdBu_r:   [[5,48,97],[103,169,207],[247,247,247],[214,96,77],[103,0,31]],
+        viridis:  [[68,1,84],[59,82,139],[33,145,140],[94,201,98],[253,231,37]],
+        plasma:   [[13,8,135],[126,3,168],[203,70,121],[248,149,64],[240,249,33]],
+        inferno:  [[0,0,4],[87,16,110],[188,55,84],[249,142,9],[252,255,164]],
+        magma:    [[0,0,4],[81,18,124],[183,55,121],[252,140,66],[252,253,191]],
+        seismic:  [[0,0,128],[255,255,255],[128,0,0]],
+        bwr:      [[0,0,255],[255,255,255],[255,0,0]],
+    };
+
+    function cmapColor(t, name) {
+        const stops = CMAPS[name] || CMAPS.coolwarm;
+        t = Math.max(0, Math.min(1, t));
+        const idx  = t * (stops.length - 1);
+        const lo   = Math.floor(idx);
+        const hi   = Math.min(lo + 1, stops.length - 1);
+        const frac = idx - lo;
+        const r = Math.round(stops[lo][0] + frac * (stops[hi][0] - stops[lo][0]));
+        const g = Math.round(stops[lo][1] + frac * (stops[hi][1] - stops[lo][1]));
+        const b = Math.round(stops[lo][2] + frac * (stops[hi][2] - stops[lo][2]));
+        return (r << 16) | (g << 8) | b;
+    }
+
+    function toggleColor3D() {
+        c3dOpen = !c3dOpen;
+        document.getElementById('color3d-body').classList.toggle('hidden', !c3dOpen);
+        document.getElementById('color3d-chevron').style.transform = c3dOpen ? 'rotate(180deg)' : '';
+        if (c3dOpen && !c3dRenderer) initColor3D();
+    }
+
+    function initColor3D() {
+        const canvas    = document.getElementById('c3d-viewport');
+        const container = canvas.parentElement;
+        c3dRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        c3dRenderer.setPixelRatio(window.devicePixelRatio);
+        c3dRenderer.setClearColor(0x0a0e17, 1);
+        c3dScene  = new THREE.Scene();
+        c3dCamera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 5000);
+        c3dRenderer.setSize(container.clientWidth, container.clientHeight);
+        c3dScene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+        dir.position.set(50, 80, 60);
+        c3dScene.add(dir);
+        updateC3DCamera();
+        (function animate() { requestAnimationFrame(animate); c3dRenderer.render(c3dScene, c3dCamera); })();
+
+        new ResizeObserver(() => {
+            c3dRenderer.setSize(container.clientWidth, container.clientHeight);
+            c3dCamera.aspect = container.clientWidth / container.clientHeight;
+            c3dCamera.updateProjectionMatrix();
+        }).observe(container);
+
+        setupC3DControls(canvas);
+    }
+
+    function updateC3DCamera() {
+        const { theta, phi, radius } = c3dSpherical;
+        c3dCamera.position.set(
+            c3dCentroid.x + radius * Math.sin(phi) * Math.sin(theta),
+            c3dCentroid.y + radius * Math.cos(phi),
+            c3dCentroid.z + radius * Math.sin(phi) * Math.cos(theta)
+        );
+        c3dCamera.lookAt(c3dCentroid.x, c3dCentroid.y, c3dCentroid.z);
+    }
+
+    function resetColor3DCamera() { updateC3DCamera(); }
+
+    function setupC3DControls(canvas) {
+        canvas.addEventListener('mousedown',  e => { c3dDragging = true; c3dPrevMouse = { x: e.clientX, y: e.clientY }; });
+        canvas.addEventListener('mouseup',    () => c3dDragging = false);
+        canvas.addEventListener('mouseleave', () => c3dDragging = false);
+        canvas.addEventListener('mousemove',  e => {
+            if (!c3dDragging) return;
+            c3dSpherical.theta -= (e.clientX - c3dPrevMouse.x) * 0.005;
+            c3dSpherical.phi    = Math.max(0.1, Math.min(Math.PI - 0.1, c3dSpherical.phi - (e.clientY - c3dPrevMouse.y) * 0.005));
+            c3dPrevMouse = { x: e.clientX, y: e.clientY };
+            updateC3DCamera();
+        });
+        canvas.addEventListener('wheel', e => {
+            c3dSpherical.radius = Math.max(5, c3dSpherical.radius * (1 + e.deltaY * 0.001));
+            updateC3DCamera();
+            e.preventDefault();
+        }, { passive: false });
+    }
+
+    async function renderColor3D() {
+        if (!c3dScene) initColor3D();
+
+        const csvKey = Object.keys(loadedCSVs)[0];
+        if (!csvKey) return;
+
+        const param   = document.getElementById('c3d-param').value;
+        const valType = document.querySelector('input[name="c3d-val-type"]:checked')?.value || 'simple';
+        const col     = valType === 'fmean' ? param + '_fMean' : param;
+        const cmap    = document.getElementById('c3d-colormap').value;
+        const vminIn  = parseFloat(document.getElementById('c3d-vmin').value);
+        const vmaxIn  = parseFloat(document.getElementById('c3d-vmax').value);
+
+        // Leer valores del CSV, excluir All
+        const rows   = loadedCSVs[csvKey].filter(r => r['Atom'] !== 'All');
+        const valMap = {};
+        rows.forEach(r => { valMap[r['Atom']] = parseFloat(r[col]); });
+
+        const vals   = Object.values(valMap).filter(v => !isNaN(v));
+        const vmin   = isNaN(vminIn) ? Math.min(...vals) : vminIn;
+        const vmax   = isNaN(vmaxIn) ? Math.max(...vals) : vmaxIn;
+
+        document.getElementById('c3d-loading').style.display = 'flex';
+        document.getElementById('c3d-empty').style.display   = 'none';
+
+        // Cargar soluto si no está cargado
+        const sistemaId = runMeta?.sistema_id || '';
+        if (!sistemaId) { document.getElementById('c3d-loading').style.display = 'none'; return; }
+
+        let atoms = [];
+        try {
+            const resp = await fetch('/api/solute/' + sistemaId);
+            if (!resp.ok) throw new Error();
+            const data = await resp.json();
+            atoms = data.atoms;
+        } catch (_) {
+            document.getElementById('c3d-loading').style.display = 'none';
+            return;
+        }
+
+        // Calcular centroide
+        let cx = 0, cy = 0, cz = 0;
+        atoms.forEach(a => { cx += a.x; cy += a.y; cz += a.z; });
+        cx /= atoms.length; cy /= atoms.length; cz /= atoms.length;
+        c3dCentroid = { x: cx, y: cy, z: cz };
+
+        let maxR = 0;
+        atoms.forEach(a => { const d = Math.sqrt((a.x-cx)**2+(a.y-cy)**2+(a.z-cz)**2); if (d > maxR) maxR = d; });
+        c3dSpherical.radius = maxR * 2.2;
+        updateC3DCamera();
+
+        // Limpiar meshes anteriores
+        c3dScene.children.filter(o => o.userData.isAtom).forEach(o => c3dScene.remove(o));
+
+        // Construir meshes con color por átomo
+        const VDW_R = { H:0.25, C:0.35, N:0.32, O:0.30, S:0.37, P:0.38, F:0.28, Cl:0.45, default:0.35 };
+        const sphereGeo = new THREE.SphereGeometry(1, 10, 8);
+        const dummy     = new THREE.Object3D();
+
+        // Agrupar: átomos con valor de color vs átomos sin valor (resto del soluto en gris)
+        const colored  = atoms.filter(a => a.n in valMap);
+        const uncolored= atoms.filter(a => !(a.n in valMap));
+
+        // Átomos sin valor — gris atenuado
+        if (uncolored.length) {
+            const mat  = new THREE.MeshPhongMaterial({ color: 0x334155, transparent: true, opacity: 0.25 });
+            const mesh = new THREE.InstancedMesh(sphereGeo, mat, uncolored.length);
+            mesh.userData.isAtom = true;
+            uncolored.forEach((a, i) => {
+                dummy.position.set(a.x, a.y, a.z);
+                dummy.scale.setScalar(VDW_R[a.s] ?? VDW_R.default);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+            c3dScene.add(mesh);
+        }
+
+        // Átomos con valor — un InstancedMesh con color por instancia
+        if (colored.length) {
+            const mat  = new THREE.MeshPhongMaterial({ vertexColors: false });
+            const mesh = new THREE.InstancedMesh(sphereGeo, mat, colored.length);
+            mesh.userData.isAtom = true;
+            const color = new THREE.Color();
+            colored.forEach((a, i) => {
+                dummy.position.set(a.x, a.y, a.z);
+                dummy.scale.setScalar((VDW_R[a.s] ?? VDW_R.default) * 1.3);
+                dummy.updateMatrix();
+                mesh.setMatrixAt(i, dummy.matrix);
+                const t   = vmax === vmin ? 0.5 : (valMap[a.n] - vmin) / (vmax - vmin);
+                color.setHex(cmapColor(t, cmap));
+                mesh.setColorAt(i, color);
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.instanceColor.needsUpdate  = true;
+            c3dScene.add(mesh);
+        }
+
+        document.getElementById('c3d-loading').style.display = 'none';
+
+        // Leyenda
+        drawColorLegend(cmap, vmin, vmax, col);
+    }
+
+    function drawColorLegend(cmap, vmin, vmax, label) {
+        document.getElementById('c3d-legend').classList.remove('hidden');
+        console.log('[V4S:legend] cmap:', cmap, '| vmin:', vmin, '| vmax:', vmax);
+
+        const canvas = document.getElementById('c3d-legend-canvas');
+        // Asegurar dimensiones reales antes de dibujar (el contenedor puede haber estado oculto)
+        const w = canvas.offsetWidth  || canvas.parentElement.offsetWidth || 300;
+        const h = 16;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width  = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.width  = w + 'px';
+        canvas.style.height = h + 'px';
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const grad = ctx.createLinearGradient(0, 0, canvas.width, 0);
+        for (let i = 0; i <= 20; i++) {
+            const t   = i / 20;
+            const hex = cmapColor(t, cmap);
+            const r   = (hex >> 16) & 0xff;
+            const g   = (hex >> 8)  & 0xff;
+            const b   =  hex        & 0xff;
+            grad.addColorStop(t, 'rgb(' + r + ',' + g + ',' + b + ')');
+        }
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        document.getElementById('c3d-legend-min').textContent = vmin.toFixed(2);
+        document.getElementById('c3d-legend-max').textContent = vmax.toFixed(2);
+    }
+
+    function configureColor3DPanel(meta, csvKey) {
+        if (!meta || !csvKey) return;
+        // Solo para mean_atoms con más de un átomo
+        const rows  = loadedCSVs[csvKey] || [];
+        const atoms = rows.filter(r => r['Atom'] && r['Atom'] !== 'All');
+        if (atoms.length <= 1) {
+            document.getElementById('color3d-panel').classList.add('hidden');
+            return;
+        }
+        // Poblar selector de parámetro
+        const cols   = Object.keys(rows[0] || {});
+        const params = (meta.params || []).filter(p => cols.includes(p));
+        const sel    = document.getElementById('c3d-param');
+        sel.innerHTML = '';
+        params.forEach(p => sel.appendChild(new Option(p, p)));
+
+        // Guardar sistema_id en meta para usarlo en renderColor3D
+        if (!meta.sistema_id && runMeta) meta.sistema_id = runMeta.sistema_id;
+
+        document.getElementById('color3d-panel').classList.remove('hidden');
+    }
+
+    window.viz = { loadRun, toggleDevMode, runCode, downloadFigure, downloadCSV, onCSVSelect,
+                   runSimplePlot, saveVizState, restoreVizState,
+                   toggleColor3D, renderColor3D, resetColor3DCamera };
 })();
 
 // Inicializar CodeMirror después de que el DOM esté listo
@@ -850,17 +1250,16 @@
     if (!container) return;
 
     // Importar CodeMirror 6 desde CDN
-    const { EditorState }                            = await import('https://esm.sh/@codemirror/state@6');
+    const { EditorState }     = await import('https://esm.sh/@codemirror/state@6');
     const { EditorView, keymap, lineNumbers, highlightActiveLine,
-             drawSelection, rectangularSelection }   = await import('https://esm.sh/@codemirror/view@6');
-    const { defaultKeymap, indentWithTab }           = await import('https://esm.sh/@codemirror/commands@6');
+             drawSelection, rectangularSelection } = await import('https://esm.sh/@codemirror/view@6');
+    const { defaultKeymap, indentWithTab }          = await import('https://esm.sh/@codemirror/commands@6');
     const { python }                                 = await import('https://esm.sh/@codemirror/lang-python@6');
     const { oneDark }                                = await import('https://esm.sh/@codemirror/theme-one-dark@6');
-    const { indentOnInput, bracketMatching, foldGutter,
+    const { indentOnInput, bracketMatching,
+             foldGutter, syntaxHighlighting,
              defaultHighlightStyle }                 = await import('https://esm.sh/@codemirror/language@6');
     const { autocompletion }                         = await import('https://esm.sh/@codemirror/autocomplete@6');
-    const { HighlightStyle, syntaxHighlighting }     = await import('https://esm.sh/@codemirror/language@6');
-    const { tags }                                   = await import('https://esm.sh/@lezer/highlight@1');
 
     function getPlaceholder(meta) {
         if (!meta) return "# data es un dict: filename -> DataFrame de pandas\n# pd, np y DT también están disponibles";
@@ -886,40 +1285,18 @@ plt.tight_layout()`;
     const PLACEHOLDER = getPlaceholder(null);
 
     const theme = EditorView.theme({
-        '&': {
-            backgroundColor: '#1a1b26',
-            color: '#c0caf5',
-            fontSize: '14px',
-            fontFamily: '"JetBrains Mono", monospace',
-            minHeight: '200px'
-        },
+        '&': { backgroundColor: '#0f1520', color: '#cbd5e1', fontSize: '0.75rem',
+               fontFamily: '"JetBrains Mono", monospace', minHeight: '200px' },
         '.cm-content': { padding: '12px 0' },
-        '.cm-line': { padding: '0 12px' },
-        '.cm-gutters': {
-            backgroundColor: '#16161e',
-            color: '#565f89',
-            borderRight: '1px solid #292e42',
-            minWidth: '40px'
-        },
-        '.cm-activeLine': { backgroundColor: '#24283b' },
-        '.cm-activeLineGutter': { backgroundColor: '#24283b' },
-        '.cm-cursor': { borderLeftColor: '#7aa2f7' },
-        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#364a82' },
-        '.cm-matchingBracket': { backgroundColor: '#3b4261', outline: 'none' }
-    }, { dark: true });
-
-    const tokyoNightHighlight = HighlightStyle.define([
-        { tag: tags.keyword, color: '#bb9af7' },
-        { tag: [tags.bool, tags.null], color: '#ff9e64' },
-        { tag: tags.string, color: '#9ece6a' },
-        { tag: tags.number, color: '#ff9e64' },
-        { tag: tags.comment, color: '#565f89', fontStyle: 'italic' },
-        { tag: tags.function(tags.variableName), color: '#7aa2f7' },
-        { tag: tags.variableName, color: '#c0caf5' },
-        { tag: tags.className, color: '#e0af68' },
-        { tag: tags.typeName, color: '#e0af68' },
-        { tag: tags.operator, color: '#89ddff' }
-    ]);
+        '.cm-line':    { padding: '0 12px' },
+        '.cm-gutters': { backgroundColor: '#0a0e17', borderRight: '1px solid #1e2d45',
+                         color: '#334155', minWidth: '40px' },
+        '.cm-activeLineGutter': { backgroundColor: '#151d2e' },
+        '.cm-activeLine':       { backgroundColor: '#151d2e' },
+        '.cm-cursor':           { borderLeftColor: '#38bdf8' },
+        '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': { backgroundColor: '#1e3a5f' },
+        '.cm-scroller': { fontFamily: '"JetBrains Mono", monospace' },
+    });
 
     const startDoc = PLACEHOLDER;
 
@@ -933,10 +1310,11 @@ plt.tight_layout()`;
                 indentOnInput(),
                 bracketMatching(),
                 foldGutter(),
-                syntaxHighlighting(tokyoNightHighlight),
+                syntaxHighlighting(defaultHighlightStyle),
                 python(),
                 autocompletion(),
                 keymap.of([...defaultKeymap, indentWithTab]),
+                oneDark,
                 theme,
                 EditorView.lineWrapping,
             ],
