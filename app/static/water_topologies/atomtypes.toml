@@ -2,7 +2,7 @@
 # Each key matches the water_model string used in the frontend.
 # Lines are injected verbatim into the topology.
 
-[tip3p]
+[TIP3P]
 lines = [
     " OW       OW         15.99940  0.00000   A     3.15061e-01   6.36400e-01 ; From WaterModels web",
     " HW       HW          1.00800  0.00000   A     0.00000e+00   0.00000e+00",

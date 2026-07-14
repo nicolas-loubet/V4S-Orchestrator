@@ -44,25 +44,34 @@ async def stream_job(job_id: str):
     progress_log = DATA_DIR / run_name / "progress.log"
 
     async def event_generator():
+      try:
         for _ in range(50):
             if progress_log.exists():
                 break
             await asyncio.sleep(0.2)
         else:
-            yield "event: error\ndata: progress.log not found\n\n"
+            yield "event: pipeline_error\ndata: progress.log not found\n\n"
             return
 
-        error_mode = False
+        error_mode  = False
+        quiet_ticks = 0
         with progress_log.open() as fh:
             while True:
                 line = fh.readline()
                 if not line:
-                    # If job is no longer running, stop streaming
-                    current = qw.get_job(job_id)
-                    if current and current["status"] in ("done", "failed", "cancelled"):
-                        return
+                    if error_mode:
+                        quiet_ticks += 1
+                        if quiet_ticks >= 10:   # ~3s sin líneas nuevas tras el error: ya se mandó todo
+                            return
+                    else:
+                        # Si el job ya terminó y no estamos en medio de un
+                        # bloque de error, no tiene sentido seguir esperando.
+                        current = qw.get_job(job_id)
+                        if current and current["status"] in ("done", "failed", "cancelled"):
+                            return
                     await asyncio.sleep(0.3)
                     continue
+                quiet_ticks = 0
 
                 text = line.rstrip("\n")
 
@@ -73,19 +82,14 @@ async def stream_job(job_id: str):
                     return
                 elif text == "PIPELINE_ERROR":
                     error_mode = True
-                    yield "event: error\ndata: El pipeline falló\n\n"
+                    yield "event: pipeline_error\ndata: El pipeline falló\n\n"
                 elif error_mode:
                     yield f"event: error_detail\ndata: {text}\n\n"
-                    pos  = fh.tell()
-                    peek = fh.readline()
-                    if not peek:
-                        await asyncio.sleep(1.0)
-                        peek = fh.readline()
-                        if not peek:
-                            return
-                    fh.seek(pos if not peek else fh.tell() - len(peek))
                 else:
                     yield f"data: {text}\n\n"
+      except Exception as exc:
+        log.exception("Excepción no prevista en el stream SSE del job '%s'", job_id)
+        yield f"event: pipeline_error\ndata: Error interno en el servidor mientras se streameaba el progreso: {exc}\n\n"
 
     return StreamingResponse(
         event_generator(),

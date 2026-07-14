@@ -36,3 +36,6 @@ notas/
 # === Compilados y comunicación ===
 build/
 scheduled-runs/
+
+# === GROMACS ===
+mdout.mdp

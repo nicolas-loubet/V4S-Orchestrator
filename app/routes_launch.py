@@ -85,6 +85,7 @@ async def launch_solvate(
     try:
         inject_water_topology(top_path, water_model)
     except Exception as exc:
+        log.exception("Fallo inyectando topología de agua para run '%s'", run_name)
         shutil.rmtree(run_dir, ignore_errors=True)
         raise HTTPException(500, f"Error inyectando topología de agua: {exc}")
 
@@ -169,21 +170,49 @@ async def stream_progress(run_name: str):
     progress_log = DATA_DIR / run_name / "progress.log"
 
     async def event_generator():
-        for _ in range(50):
+      try:
+        # Esperar a que el job arranque de verdad. Puede tardar por el
+        # colchón de idle de gmx_gpu (60s) o porque hay otra corrida
+        # ocupando la GPU — así que toleramos varios minutos, no 10s,
+        # e informamos el estado mientras tanto en vez de morir en silencio.
+        last_status = None
+        for i in range(600):  # hasta 10 minutos (600 x 1s)
             if progress_log.exists():
                 break
-            await asyncio.sleep(0.2)
+
+            job = qw.get_job_by_run_name(run_name)
+            if job is None:
+                yield "event: pipeline_error\ndata: No se encontró el job en la cola.\n\n"
+                return
+            if job["status"] != last_status:
+                if job["status"] == "pending":
+                    yield "event: queued\ndata: En cola, esperando turno (GPU ocupada o en período de resguardo)...\n\n"
+                elif job["status"] == "failed":
+                    yield "event: pipeline_error\ndata: El job fue marcado como fallido antes de generar progress.log (revisá el log del servidor).\n\n"
+                    return
+                elif job["status"] == "cancelled":
+                    yield "event: pipeline_error\ndata: El job fue cancelado.\n\n"
+                    return
+                last_status = job["status"]
+
+            await asyncio.sleep(1.0)
         else:
-            yield "event: error\ndata: progress.log not found — did the script start?\n\n"
+            yield "event: pipeline_error\ndata: progress.log not found — did the script start?\n\n"
             return
 
-        error_mode = False
+        error_mode  = False
+        quiet_ticks = 0
         with progress_log.open() as fh:
             while True:
                 line = fh.readline()
                 if not line:
+                    if error_mode:
+                        quiet_ticks += 1
+                        if quiet_ticks >= 10:   # ~3s sin líneas nuevas tras el error: ya se mandó todo
+                            return
                     await asyncio.sleep(0.3)
                     continue
+                quiet_ticks = 0
 
                 text = line.rstrip("\n")
 
@@ -194,19 +223,14 @@ async def stream_progress(run_name: str):
                     return
                 elif text == "PIPELINE_ERROR":
                     error_mode = True
-                    yield "event: error\ndata: El pipeline falló\n\n"
+                    yield "event: pipeline_error\ndata: El pipeline falló\n\n"
                 elif error_mode:
                     yield f"event: error_detail\ndata: {text}\n\n"
-                    pos = fh.tell()
-                    peek = fh.readline()
-                    if not peek:
-                        await asyncio.sleep(1.0)
-                        peek = fh.readline()
-                        if not peek:
-                            return
-                    fh.seek(pos if not peek else fh.tell() - len(peek))
                 else:
                     yield f"data: {text}\n\n"
+      except Exception as exc:
+        log.exception("Excepción no prevista en el stream SSE de '%s'", run_name)
+        yield f"event: pipeline_error\ndata: Error interno en el servidor mientras se streameaba el progreso: {exc}\n\n"
 
     return StreamingResponse(
         event_generator(),

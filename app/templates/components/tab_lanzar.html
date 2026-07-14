@@ -461,8 +461,12 @@
 <script>
 (function () {
 
+    // Namespace compartido con base.html: window.v4s.saveFormState() se llama
+    // automaticamente en htmx:beforeSwap, sin importar a que tab se navegue.
+    window.v4s = window.v4s || {};
+
     let stabStepCount = 0;
-    const _accumulatedFiles = {};
+    const _accumulatedFiles = (window.v4s.state && window.v4s.state.files) || {};
 
     // ── Utilidad: ps → string legible ─────────────────────────────────
     function fmtTime(ps) {
@@ -790,6 +794,113 @@
                         : '— ingresá un nombre de run válido';
     }
 
+    // ── Persistencia de estado (window.v4s) ─────────────────────────────
+    function saveFormState() {
+        const stabSteps = Array.from(document.querySelectorAll('.stab-step')).map(step => ({
+            time_ps:   step.querySelector('[name="time_ps"]')?.value,
+            dt:        step.querySelector('[name="dt"]')?.value,
+            nsteps:    step.querySelector('[name="nsteps"]')?.value,
+            ensemble:  step.querySelector('.stab-ensemble-btn.border-accent\\/60')?.dataset.ensemble || 'NVT',
+            aniso:     step.querySelector('.aniso-btn')?.getAttribute('aria-checked') === 'true',
+            temp:      step.querySelector('[name="temp"]')?.value,
+            pres:      step.querySelector('[name="pres"]')?.value,
+            mdp_extra: step.querySelector('[name="mdp_extra"]')?.value || '',
+        }));
+
+        window.v4s.state = {
+            files:         _accumulatedFiles,
+            runName:       document.getElementById('run-name')?.value || '',
+            waterModel:    document.querySelector('.water-model-btn.border-accent\\/60')?.dataset.model || 'TIP3P',
+            boxMode:       document.querySelector('.box-mode-btn.border-accent\\/60')?.dataset.mode || 'actual',
+            boxXYZ:        Array.from(document.querySelectorAll('#box-resize-inputs input')).map(i => i.value),
+            skipHydration: document.getElementById('hydration-skip-btn')?.getAttribute('aria-checked') === 'true',
+            minimAlgo:     document.querySelector('.minim-algo-btn.border-accent\\/60')?.dataset.algo || 'steep',
+            minimNsteps:   document.getElementById('minim-nsteps')?.value,
+            minimEmtol:    document.getElementById('minim-emtol')?.value,
+            minimExtra:    document.getElementById('minim-mdp-extra')?.value || '',
+            stabSteps:     stabSteps,
+            prodEnsemble:  document.querySelector('.prod-ensemble-btn.border-accent\\/60')?.dataset.ensemble || 'NPT',
+            prodTime:      document.getElementById('prod-time')?.value,
+            prodNsteps:    document.getElementById('prod-nsteps')?.value,
+            prodDt:        document.getElementById('prod-dt')?.value,
+            prodTemp:      document.getElementById('prod-temp')?.value,
+            prodPres:      document.getElementById('prod-pres')?.value,
+            prodNstxout:   document.getElementById('prod-nstxout')?.value,
+            prodAniso:     document.getElementById('prod-aniso-btn')?.getAttribute('aria-checked') === 'true',
+            prodExtra:     document.getElementById('prod-mdp-extra')?.value || '',
+        };
+    }
+
+    function restoreFormState() {
+        const state = window.v4s.state;
+        if (!state) return;
+
+        renderFileList(); // _accumulatedFiles ya viene poblado desde el estado guardado
+
+        const runNameInput = document.getElementById('run-name');
+        runNameInput.value = state.runName || '';
+        validateRunName(runNameInput);
+
+        const waterBtn = document.querySelector(`.water-model-btn[data-model="${state.waterModel}"]`);
+        if (waterBtn) selectWaterModel(waterBtn);
+
+        const boxBtn = document.querySelector(`.box-mode-btn[data-mode="${state.boxMode}"]`);
+        if (boxBtn) selectBoxMode(boxBtn);
+        document.querySelectorAll('#box-resize-inputs input').forEach((inp, i) => {
+            inp.value = (state.boxXYZ && state.boxXYZ[i]) || '';
+        });
+
+        if (state.skipHydration) toggleHydrationSkip();
+
+        const minimBtn = document.querySelector(`.minim-algo-btn[data-algo="${state.minimAlgo}"]`);
+        if (minimBtn) selectMinimAlgo(minimBtn);
+        if (state.minimNsteps != null) document.getElementById('minim-nsteps').value = state.minimNsteps;
+        if (state.minimEmtol != null) document.getElementById('minim-emtol').value = state.minimEmtol;
+        if (state.minimExtra) {
+            document.getElementById('minim-mdp-extra').value = state.minimExtra;
+            if (document.getElementById('minim-mdp-extra').classList.contains('hidden')) toggleMdpExtra('minim');
+        }
+
+        (state.stabSteps || []).forEach(s => {
+            addStabStep();
+            const step = document.querySelector('#stab-list .stab-step:last-child');
+            step.querySelector('[name="time_ps"]').value = s.time_ps;
+            step.querySelector('[name="dt"]').value      = s.dt;
+            step.querySelector('[name="nsteps"]').value  = s.nsteps;
+            const ensBtn = step.querySelector(`.stab-ensemble-btn[data-ensemble="${s.ensemble}"]`);
+            if (ensBtn) selectStabEnsemble(ensBtn);
+            if (s.aniso) toggleAniso(step.querySelector('.aniso-btn'));
+            step.querySelector('[name="temp"]').value = s.temp;
+            const presInput = step.querySelector('[name="pres"]');
+            if (presInput && s.pres != null) presInput.value = s.pres;
+            if (s.mdp_extra) {
+                const area = step.querySelector('[name="mdp_extra"]');
+                area.value = s.mdp_extra;
+                area.classList.remove('hidden');
+                const icon = step.querySelector('.mdp-toggle-icon');
+                if (icon) icon.textContent = '▼';
+            }
+            updateStabStepTime(step.querySelector('[name="time_ps"]'));
+        });
+
+        const prodBtn = document.querySelector(`.prod-ensemble-btn[data-ensemble="${state.prodEnsemble}"]`);
+        if (prodBtn) selectProdEnsemble(prodBtn);
+        if (state.prodTime    != null) document.getElementById('prod-time').value    = state.prodTime;
+        if (state.prodNsteps  != null) document.getElementById('prod-nsteps').value  = state.prodNsteps;
+        if (state.prodDt      != null) document.getElementById('prod-dt').value      = state.prodDt;
+        if (state.prodTemp    != null) document.getElementById('prod-temp').value    = state.prodTemp;
+        if (state.prodPres    != null) document.getElementById('prod-pres').value    = state.prodPres;
+        if (state.prodNstxout != null) document.getElementById('prod-nstxout').value = state.prodNstxout;
+        if (state.prodAniso) toggleAniso('prod');
+        if (state.prodExtra) {
+            document.getElementById('prod-mdp-extra').value = state.prodExtra;
+            if (document.getElementById('prod-mdp-extra').classList.contains('hidden')) toggleMdpExtra('prod');
+        }
+
+        updateProdSummary();
+        updateLaunchBtn();
+    }
+
     // ── Exponer al exterior (ANTES de que cualquier onclick pueda dispararse) ─
     window.toggleAniso        = toggleAniso;
     window.updateStabSummary  = updateStabSummary;
@@ -813,6 +924,8 @@
     window.selectStabEnsemble = selectStabEnsemble;
     window.updateStabStepTime = updateStabStepTime;
     window.toggleStabMdpExtra = toggleStabMdpExtra;
+    window.v4s.saveFormState    = saveFormState;
+    window.v4s.restoreFormState = restoreFormState;
 
     window.launchPipeline = async function () {
         const btn    = document.getElementById('launch-btn');
@@ -916,7 +1029,7 @@
 
         if (!res.ok) {
             const data = await res.json().catch(() => ({}));
-            appendLog(`Error: ${data.detail?.error || res.statusText}`, 'text-red-400');
+            appendLog(`Error: ${data.detail || res.statusText}`, 'text-red-400');
             btn.disabled = false; btn.classList.remove('opacity-50');
             return;
         }
@@ -926,16 +1039,20 @@
         const evtSource = new EventSource(`/api/launch/${runName}/stream`);
         evtSource.onmessage        = e => appendLog(e.data);
         evtSource.addEventListener('start',        e => appendLog('▶ ' + e.data, 'text-accent'));
+        evtSource.addEventListener('queued',       e => appendLog('⏳ ' + e.data, 'text-slate-400'));
         evtSource.addEventListener('done',         e => {
             appendLog('✓ ' + e.data, 'text-green-400');
             evtSource.close();
             btn.disabled = false; btn.classList.remove('opacity-50');
+            window.v4s.state = null; // limpiar: este run ya se lanzó
         });
         evtSource.addEventListener('error_detail', e => appendLog(e.data, 'text-red-300'));
-        evtSource.addEventListener('error',        e => {
+        evtSource.addEventListener('pipeline_error', e => {
             appendLog('✕ ' + e.data, 'text-red-400');
-            evtSource.close();
-            btn.disabled = false; btn.classList.remove('opacity-50');
+            // No cerramos acá: quedan por llegar los error_detail con el
+            // tail real de gromacs.log. El cierre lo maneja onerror abajo,
+            // que ahora sólo se dispara con errores de conexión reales
+            // (ya no colisiona con este evento, antes ambos se llamaban 'error').
         });
         evtSource.onerror = () => {
             appendLog('Conexión SSE cerrada.', 'text-slate-600');
@@ -945,11 +1062,15 @@
     };
 
     // ── Init ──────────────────────────────────────────────────────────
-    document.querySelector('.water-model-btn[data-model="TIP3P"]')?.click();
-    document.querySelector('.minim-algo-btn[data-algo="steep"]')?.click();
-    document.querySelector('.prod-ensemble-btn[data-ensemble="NPT"]')?.click();
-    updateProdSummary();
-    updateLaunchBtn();
+    if (window.v4s.state) {
+        restoreFormState();
+    } else {
+        document.querySelector('.water-model-btn[data-model="TIP3P"]')?.click();
+        document.querySelector('.minim-algo-btn[data-algo="steep"]')?.click();
+        document.querySelector('.prod-ensemble-btn[data-ensemble="NPT"]')?.click();
+        updateProdSummary();
+        updateLaunchBtn();
+    }
 
 })();
 </script>

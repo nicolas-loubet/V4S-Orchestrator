@@ -20,8 +20,12 @@ log = logging.getLogger(__name__)
 QUEUE_DIR:   Path | None = None
 SCREEN_NAME: str = "V4SOrch"
 
-CHECK_INTERVAL_S  = 600   # poll every 10 minutes
+CHECK_INTERVAL_S  = 600   # poll de resguardo cada 10 minutos (por si se pierde algún wake-up)
 IDLE_REQUIRED_S   = 60    # gmx_gpu must have been gone for this long
+
+# Se dispara cada vez que se encola un job nuevo, para que el worker
+# lo revise ya mismo en vez de esperar el próximo ciclo de CHECK_INTERVAL_S.
+_new_job_event = asyncio.Event()
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +61,18 @@ def enqueue(run_name: str, script_path: Path) -> dict:
     }
     (queue_dir() / filename).write_text(json.dumps(job, indent=2))
     log.info("Enqueued job %s → %s", job_id, run_name)
+    _new_job_event.set()   # despertar al worker ya
     return job
+
+
+def get_job_by_run_name(run_name: str) -> dict | None:
+    matches = list(queue_dir().glob(f"*_{run_name}.json"))
+    if not matches:
+        return None
+    try:
+        return json.loads(matches[0].read_text())
+    except Exception:
+        return None
 
 
 def _job_path(job_id: str, run_name: str) -> Path | None:
@@ -195,7 +210,7 @@ async def _wait_for_completion(job: dict) -> str:
 
 async def worker_loop() -> None:
     """Background task — runs forever alongside FastAPI."""
-    log.info("Queue worker started (check every %ds, idle threshold %ds)",
+    log.info("Queue worker started (check-interval fallback %ds, idle threshold %ds)",
              CHECK_INTERVAL_S, IDLE_REQUIRED_S)
 
     # Initialise _last_gmx_seen so we don't fire immediately at startup
@@ -203,7 +218,14 @@ async def worker_loop() -> None:
     _last_gmx_seen = time.monotonic()
 
     while True:
-        await asyncio.sleep(CHECK_INTERVAL_S)
+        # Esperar a que llegue un job nuevo (enqueue() dispara el evento) o,
+        # como red de seguridad, revisar igual cada CHECK_INTERVAL_S por si
+        # el evento se perdió por algún motivo.
+        try:
+            await asyncio.wait_for(_new_job_event.wait(), timeout=CHECK_INTERVAL_S)
+        except asyncio.TimeoutError:
+            pass
+        _new_job_event.clear()
 
         try:
             # Find oldest pending job
@@ -213,6 +235,9 @@ async def worker_loop() -> None:
 
             if not await _gmx_idle_long_enough():
                 log.debug("gmx_gpu still active or not idle long enough — skipping")
+                # Nos volvemos a despertar en breve para reintentar sin
+                # esperar los 10 minutos completos del check de resguardo.
+                asyncio.get_event_loop().call_later(5, _new_job_event.set)
                 continue
 
             job = pending[0]
@@ -234,6 +259,11 @@ async def worker_loop() -> None:
             job["finished_at"] = datetime.now(timezone.utc).isoformat()
             _update_job(job)
             log.info("Job %s finished with status: %s", job["id"], result)
+
+            # Si quedan mas jobs pendientes, procesarlos ya sin esperar
+            # otro ciclo completo.
+            if any(j["status"] == "pending" for j in list_jobs()):
+                _new_job_event.set()
 
         except Exception as exc:
             log.exception("Unexpected error in worker loop: %s", exc)

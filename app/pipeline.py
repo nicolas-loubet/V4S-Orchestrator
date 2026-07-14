@@ -27,6 +27,10 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore
 
+import logging
+
+log = logging.getLogger(__name__)
+
 _ATOMTYPES_FILE = WATER_TOPS / "atomtypes.toml"
 
 def _load_atomtypes() -> dict[str, list[str]]:
@@ -35,6 +39,10 @@ def _load_atomtypes() -> dict[str, list[str]]:
     return {model: data["lines"] for model, data in raw.items()}
 
 WATER_ATOMTYPES: dict[str, list[str]] = _load_atomtypes()
+log.warning(
+    "[pipeline] atomtypes.toml cargado desde %s (mtime=%s) — claves: %s",
+    _ATOMTYPES_FILE, _ATOMTYPES_FILE.stat().st_mtime, list(WATER_ATOMTYPES.keys()),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +71,10 @@ def inject_water_topology(top_path: Path, water_model: str) -> None:
     2. Insert the water [ moleculetype ] .itp block just before
        [ system ].  Skipped if WAT is already defined.
     """
+    log.warning(
+        "[inject_water_topology] water_model=%r | WATER_MODEL_FILES keys=%s | WATER_ATOMTYPES keys=%s",
+        water_model, list(WATER_MODEL_FILES.keys()), list(WATER_ATOMTYPES.keys()),
+    )
     _, itp_name, _ = WATER_MODEL_FILES[water_model]
     itp_text       = (WATER_TOPS / itp_name).read_text()
     atomtype_lines = WATER_ATOMTYPES[water_model]

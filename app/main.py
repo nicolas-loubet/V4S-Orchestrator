@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import shutil
 import subprocess
 import tomli_w
@@ -16,10 +18,19 @@ try:
 except ImportError:
     import tomli as tomllib
 
+from . import queue_worker as qw
+from .routes_launch import launch_router
+from .routes_queue import queue_router
+
+log = logging.getLogger(__name__)
+
 BASE_DIR  = Path(__file__).resolve().parent.parent
 DATA_PATH = BASE_DIR.parent / "data"
 
 app = FastAPI(title="V4S-Orchestrator")
+
+app.include_router(launch_router)
+app.include_router(queue_router)
 
 app.mount(
     "/static",
@@ -129,6 +140,12 @@ async def startup_checks() -> None:
         print( "[V4S]        El servidor continua, pero las funciones que lean")
         print( "[V4S]        archivos externos fallaran hasta que la crees.")
 
+    # Inicializar la cola de jobs y arrancar el worker en background
+    qw.QUEUE_DIR = DATA_PATH / "queue"
+    qw.QUEUE_DIR.mkdir(parents=True, exist_ok=True)
+    asyncio.create_task(qw.worker_loop())
+    print(f"[V4S] Cola de jobs inicializada en: {qw.QUEUE_DIR}")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -148,6 +165,11 @@ def _render(template_name: str, request: Request, context: dict | None = None) -
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return _render("dashboard.html", request)
+
+
+@app.get("/tabs/lanzar", response_class=HTMLResponse)
+async def tab_lanzar(request: Request):
+    return _render("components/tab_lanzar.html", request)
 
 
 @app.get("/tabs/sistema", response_class=HTMLResponse)
