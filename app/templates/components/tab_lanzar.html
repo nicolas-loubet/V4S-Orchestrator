@@ -935,6 +935,73 @@
     window.v4s.saveFormState    = saveFormState;
     window.v4s.restoreFormState = restoreFormState;
 
+    // ── Stream de progreso: separado de launchPipeline() para poder
+    // reconectarlo también al volver al tab (ver window._v4sActiveRun) ──
+    function appendLogTo(logPre, text, cls = '') {
+        const line = document.createElement('div');
+        if (cls) line.className = cls;
+        line.textContent = text;
+        logPre.appendChild(line);
+        logPre.scrollTop = logPre.scrollHeight;
+    }
+
+    function attachProgressStream(runName, { isReconnect = false } = {}) {
+        const btn    = document.getElementById('launch-btn');
+        const logBox = document.getElementById('launch-log');
+        const logPre = document.getElementById('launch-log-pre');
+        if (!btn || !logBox || !logPre) return null; // no estamos en el DOM de Lanzar
+
+        // Marcamos esta corrida como "la que se está siguiendo" — vive
+        // aparte de window.v4s.state porque no es un dato de formulario,
+        // y no se pisa cuando se guarda/restaura el formulario.
+        window._v4sActiveRun = { run_name: runName };
+
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+        logBox.classList.remove('hidden');
+        logPre.innerHTML = '';
+
+        const appendLog = (text, cls = '') => appendLogTo(logPre, text, cls);
+        appendLog(isReconnect
+            ? `Reconectando a la corrida "${runName}"...`
+            : 'Pipeline lanzado en screen. Esperando progreso...');
+
+        // El endpoint re-emite progress.log desde el principio en cada
+        // conexión nueva, así que reconectar reconstruye el historial
+        // completo tal cual — no hace falta guardar el texto del log.
+        const evtSource = new EventSource(`/api/launch/${runName}/stream`);
+        evtSource.onmessage        = e => appendLog(e.data);
+        evtSource.addEventListener('start',        e => appendLog('▶ ' + e.data, 'text-accent'));
+        evtSource.addEventListener('queued',       e => appendLog('⏳ ' + e.data, 'text-slate-400'));
+        evtSource.addEventListener('done',         e => {
+            appendLog('✓ ' + e.data, 'text-green-400');
+            evtSource.close();
+            btn.disabled = false; btn.classList.remove('opacity-50');
+            window.v4s.state     = null; // limpiar: este run ya se lanzó
+            window._v4sActiveRun = null; // terminó bien, ya no hay nada que reconectar
+        });
+        evtSource.addEventListener('error_detail', e => appendLog(e.data, 'text-red-300'));
+        evtSource.addEventListener('pipeline_error', e => {
+            appendLog('✕ ' + e.data, 'text-red-400');
+            // No cerramos acá: quedan por llegar los error_detail con el
+            // tail real de gromacs.log. El cierre lo maneja onerror abajo,
+            // que ahora sólo se dispara con errores de conexión reales
+            // (ya no colisiona con este evento, antes ambos se llamaban 'error').
+        });
+        evtSource.onerror = () => {
+            appendLog('Conexión SSE cerrada.', 'text-slate-600');
+            evtSource.close();
+            btn.disabled = false; btn.classList.remove('opacity-50');
+            // OJO: no tocamos window._v4sActiveRun acá. Que se haya cerrado
+            // la conexión (o que el pipeline haya fallado) no significa que
+            // dejemos de trackear el run — así, si volvés al tab, se
+            // reconecta y ves el log completo de todas formas.
+        };
+
+        return evtSource;
+    }
+    window.attachProgressStream = attachProgressStream;
+
     window.launchPipeline = async function () {
         const btn    = document.getElementById('launch-btn');
         const logBox = document.getElementById('launch-log');
@@ -1018,13 +1085,7 @@
         logBox.classList.remove('hidden');
         logPre.innerHTML = '';
 
-        const appendLog = (text, cls = '') => {
-            const line = document.createElement('div');
-            if (cls) line.className = cls;
-            line.textContent = text;
-            logPre.appendChild(line);
-            logPre.scrollTop = logPre.scrollHeight;
-        };
+        const appendLog = (text, cls = '') => appendLogTo(logPre, text, cls);
 
         let res;
         try {
@@ -1042,31 +1103,7 @@
             return;
         }
 
-        appendLog('Pipeline lanzado en screen. Esperando progreso...');
-
-        const evtSource = new EventSource(`/api/launch/${runName}/stream`);
-        evtSource.onmessage        = e => appendLog(e.data);
-        evtSource.addEventListener('start',        e => appendLog('▶ ' + e.data, 'text-accent'));
-        evtSource.addEventListener('queued',       e => appendLog('⏳ ' + e.data, 'text-slate-400'));
-        evtSource.addEventListener('done',         e => {
-            appendLog('✓ ' + e.data, 'text-green-400');
-            evtSource.close();
-            btn.disabled = false; btn.classList.remove('opacity-50');
-            window.v4s.state = null; // limpiar: este run ya se lanzó
-        });
-        evtSource.addEventListener('error_detail', e => appendLog(e.data, 'text-red-300'));
-        evtSource.addEventListener('pipeline_error', e => {
-            appendLog('✕ ' + e.data, 'text-red-400');
-            // No cerramos acá: quedan por llegar los error_detail con el
-            // tail real de gromacs.log. El cierre lo maneja onerror abajo,
-            // que ahora sólo se dispara con errores de conexión reales
-            // (ya no colisiona con este evento, antes ambos se llamaban 'error').
-        });
-        evtSource.onerror = () => {
-            appendLog('Conexión SSE cerrada.', 'text-slate-600');
-            evtSource.close();
-            btn.disabled = false; btn.classList.remove('opacity-50');
-        };
+        attachProgressStream(runName);
     };
 
     // ── Init ──────────────────────────────────────────────────────────
@@ -1078,6 +1115,13 @@
         document.querySelector('.prod-ensemble-btn[data-ensemble="NPT"]')?.click();
         updateProdSummary();
         updateLaunchBtn();
+    }
+
+    // Si había una corrida en curso (o recién terminada/fallida) trackeada
+    // en window._v4sActiveRun, reconectar la consola — independiente de si
+    // el formulario se pudo restaurar o no.
+    if (window._v4sActiveRun) {
+        attachProgressStream(window._v4sActiveRun.run_name, { isReconnect: true });
     }
 
 })();
