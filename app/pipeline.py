@@ -6,6 +6,7 @@ write_run_script() concatenates them all into run.sh.
 """
 
 from pathlib import Path
+import re
 
 GMX      = "gmx_gpu"
 APP_DIR  = Path(__file__).resolve().parent          # app/
@@ -207,11 +208,29 @@ def _heredoc(mdp_path: str, content: str) -> list[str]:
     return lines
 
 
+_POSRES_DEFINE_RE = re.compile(r"^\s*define\s*=.*POSRES", re.IGNORECASE | re.MULTILINE)
+
+
+def _mdp_needs_posres_ref(mdp_content: str) -> bool:
+    """True si el .mdp tiene un `define = -DPOSRES...` que activa algún
+    bloque [ position_restraints ] del .top. Solo en ese caso grompp exige
+    -r (GROMACS >= 2018); si no está activo, no hace falta pasarlo."""
+    return bool(_POSRES_DEFINE_RE.search(mdp_content))
+
+
 def _grompp_mdrun(label: str, mdp: str, gro: str, top: str,
-                  out_tpr: str, out_gro: str, out_prefix: str) -> list[str]:
-    """grompp + mdrun block, all GROMACS output → GMX_LOG."""
+                  out_tpr: str, out_gro: str, out_prefix: str,
+                  needs_posres_ref: bool = False) -> list[str]:
+    """grompp + mdrun block, all GROMACS output → GMX_LOG.
+
+    -r solo se agrega si el .mdp de esta etapa activa restricciones de
+    posición (define = -DPOSRES...); si no, grompp no lo exige y no hace
+    falta pasarlo. Cuando hace falta, usamos la misma estructura que -c
+    como referencia (lo que la propia GROMACS recomienda por defecto).
+    """
+    ref_flag = f' -r "{gro}"' if needs_posres_ref else ""
     return [
-        f'{GMX} grompp -f "{mdp}" -c "{gro}" -p "{top}" -o "{out_tpr}" -maxwarn 2'
+        f'{GMX} grompp -f "{mdp}" -c "{gro}"{ref_flag} -p "{top}" -o "{out_tpr}" -maxwarn 2'
         f' >> "$GMX_LOG" 2>&1',
         f'{GMX} mdrun -v -deffnm "{out_prefix}"'
         f' >> "$GMX_LOG" 2>&1',
@@ -269,6 +288,7 @@ pbc                  = xyz{_mdp_extra_lines(extra_mdp)}"""
         out_tpr  = f'"{stab_dir}/{label}.tpr"',
         out_gro  = out_gro,
         out_prefix = f'"{stab_dir}/{label}"',
+        needs_posres_ref = _mdp_needs_posres_ref(mdp_content),
     )
     lines += [f'echo "[Minimization] {label} complete."']
     return lines
@@ -408,6 +428,7 @@ DispCorr             = EnerPres
             out_tpr    = f'"{stab_dir}/{label}.tpr"',
             out_gro    = f'"{stab_dir}/{label}.gro"',
             out_prefix = f'"{stab_dir}/{label}"',
+            needs_posres_ref = _mdp_needs_posres_ref(mdp_content),
         )
         lines += [f'echo "[Equilibration] {label} complete."']
 
@@ -524,6 +545,7 @@ gen_vel              = no{_mdp_extra_lines(extra_mdp)}"""
         out_tpr    = f'"{stab_dir}/PROD.tpr"',
         out_gro    = f'"{stab_dir}/PROD.gro"',
         out_prefix = f'"{stab_dir}/PROD"',
+        needs_posres_ref = _mdp_needs_posres_ref(mdp_content),
     )
     lines += ['echo "[Production] Complete."']
     return lines

@@ -796,6 +796,14 @@
 
     // ── Persistencia de estado (window.v4s) ─────────────────────────────
     function saveFormState() {
+        // Esta función queda registrada en window.v4s.saveFormState mientras
+        // el tab Lanzar está activo. base.html la dispara en TODOS los
+        // htmx:beforeSwap, incluso al navegar DESDE otro tab hacia Lanzar
+        // (ahí el DOM activo todavía es el del otro tab, no el nuestro).
+        // Si no encontramos nuestro propio marcador en el DOM, no es
+        // nuestro turno de guardar — salir sin tocar el estado ya guardado.
+        if (!document.getElementById('run-name')) return;
+
         const stabSteps = Array.from(document.querySelectorAll('.stab-step')).map(step => ({
             time_ps:   step.querySelector('[name="time_ps"]')?.value,
             dt:        step.querySelector('[name="dt"]')?.value,
