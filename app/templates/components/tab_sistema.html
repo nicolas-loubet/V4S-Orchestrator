@@ -189,7 +189,8 @@
                                  done:'Completado', failed:'Fallido', cancelled:'Cancelado' };
             jobs.forEach(job => {
                 const row = document.createElement('div');
-                row.className = 'flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-border-dim bg-surface-700/50';
+                row.className = 'flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-border-dim bg-surface-700/50 cursor-pointer hover:border-accent/40 hover:bg-surface-700/80 transition-all duration-150';
+                row.onclick = () => window.viewJobInLanzar(job.run_name);
                 const cls     = statusCls[job.status] || 'text-slate-400';
                 const lbl     = statusLbl[job.status] || job.status;
                 const created = job.created_at
@@ -202,10 +203,11 @@
                     </div>
                     <span class="font-mono text-xs ${cls} whitespace-nowrap">${lbl}</span>
                     ${job.status === 'pending' ? `
-                        <button onclick="window.cancelJob('${job.id}',this)"
+                        <button onclick="event.stopPropagation(); window.cancelJob('${job.id}',this)"
                                 class="font-mono text-xs px-2.5 py-1 rounded border border-border-dim
                                        text-slate-500 hover:text-red-400 hover:border-red-400/40
-                                       transition-all duration-150">Cancelar</button>` : '<div class="w-16"></div>'}`;
+                                       transition-all duration-150">Cancelar</button>` :
+                        `<span class="font-mono text-xs text-slate-600 whitespace-nowrap">Ver &rarr;</span>`}`;
                 list.appendChild(row);
             });
         } catch(err) {
@@ -227,8 +229,19 @@
         } catch { btn.textContent = 'Error'; }
     }
 
+    // Recuperar una corrida de la cola: la marca como "activa" y navega a
+    // Lanzar, que la reconecta automáticamente (ver window._v4sActiveRun
+    // en tab_lanzar.html — el mismo mecanismo que usa el botón "Lanzar").
+    function viewJobInLanzar(runName) {
+        const modal = document.getElementById('queue-modal');
+        if (modal) modal.classList.add('hidden');
+        window._v4sActiveRun = { run_name: runName };
+        window.navToLanzar();
+    }
+
     window.openQueue = openQueue;
     window.cancelJob = cancelJob;
+    window.viewJobInLanzar = viewJobInLanzar;
 })();
 </script>
 
