@@ -439,6 +439,16 @@ DispCorr             = EnerPres
 # Stage: production
 # ---------------------------------------------------------------------------
 
+def compute_n_confs(nsteps: int, dt_fs: float, nstxout_ps: float) -> int:
+    """Cantidad de frames que va a producir trjconv -sep en producción —
+    misma cuenta que usa GROMACS para nstxout-compressed. Se expone acá
+    (no solo dentro de build_production_script) para que routes_launch.py
+    pueda anticipar el N esperado al encolar el job, sin tener que esperar
+    a que el pipeline corra para saberlo (usado para el label de la cola)."""
+    nstxout_comp = max(1, round(nstxout_ps * 1000 / dt_fs))
+    return nsteps // nstxout_comp + 1
+
+
 def build_production_script(
     run_name:    str,
     ensemble:    str,    # "NVT" | "NPT"
@@ -601,8 +611,7 @@ def build_confs_minimization_script(
     # Misma cuenta de frames que usó trjconv -sep en producción, y mismo
     # criterio de referencia (-r) que PROD: la estructura de entrada a esa
     # etapa (última equilibración, o EM si no hubo equilibración).
-    nstxout_comp = max(1, round(prod_nstxout_ps * 1000 / prod_dt_fs))
-    n_confs      = prod_nsteps // nstxout_comp + 1
+    n_confs = compute_n_confs(prod_nsteps, prod_dt_fs, prod_nstxout_ps)
 
     if last_equil_label:
         ref_gro = f'"{stab_dir}/{last_equil_label}.gro"'
@@ -689,6 +698,84 @@ pbc                  = xyz{define_line}"""
     ]
 
     return lines
+
+
+def build_system_toml_script(
+    run_name:              str,
+    total_simulated_ns:    float,
+    snapshot_interval_ps:  float,
+    ensemble:              str,
+    n_confs:               int,
+    confmin_enabled:       bool,
+) -> list[str]:
+    """
+    Escribe DATA_DIR/<run_name>/system.toml al final del pipeline — es lo
+    que hace que la corrida aparezca en "Elegir Sistema" (main.py solo
+    lista carpetas que tengan este archivo). Un único archivo por corrida:
+    [dataset.real] y [dataset.inherent] conviven ahí, cada uno con su
+    propia ruta relativa (los confs NO se mueven ni se duplican, quedan
+    donde el pipeline ya los deja). El motor C++ decide con cuál dataset
+    calcular a partir de esta metadata — acá solo se la dejamos servida.
+
+    n_converged de [dataset.inherent] se calcula en runtime (recién se
+    sabe cuando termina confs_min/), así que el heredoc de abajo usa un
+    delimitador SIN comillas a propósito, para que "$N_CONVERGED" se
+    expanda al escribir el archivo.
+    """
+    run_dir   = DATA_DIR / run_name
+    min_dir   = run_dir / "confs_min"
+    confs_rel = "estabilizacion/confs"   # relativo a run_dir, como ya está
+
+    lines = [
+        "# ── system.toml (registro para 'Elegir Sistema') ────────────────",
+        'echo "[System] Escribiendo system.toml..."',
+    ]
+
+    if confmin_enabled:
+        lines += [
+            f'MIN_SUMMARY="{min_dir}/summary.csv"',
+            'N_CONVERGED=0',
+            'if [ -f "$MIN_SUMMARY" ]; then',
+            '''    N_CONVERGED=$(awk -F, 'NR>1 && $3=="ok"' "$MIN_SUMMARY" | wc -l)''',
+            'fi',
+        ]
+        inherent_block = f'''[dataset.inherent]
+enabled = true
+path = "confs_min"
+prefix = "em-"
+n_confs = {n_confs}
+n_converged = $N_CONVERGED
+summary = "confs_min/summary.csv"'''
+    else:
+        inherent_block = '''[dataset.inherent]
+enabled = false'''
+
+    toml_content = f'''[info]
+name = "{run_name}"
+description = "Generado automáticamente al terminar el pipeline."
+
+[simulation]
+total_simulated_ns = {total_simulated_ns}
+snapshot_interval_ps = {snapshot_interval_ps}
+ensemble = "{ensemble}"
+
+[dataset.real]
+path = "{confs_rel}"
+prefix = "conf-"
+n_confs = {n_confs}
+
+{inherent_block}'''
+
+    # Delimitador SIN comillas a propósito (ver docstring): necesitamos que
+    # $N_CONVERGED se expanda. El resto del contenido no tiene '$' asi que
+    # es seguro.
+    lines += [f'cat << SYS_TOML_EOF > "{run_dir}/system.toml"']
+    lines += toml_content.splitlines()
+    lines += ['SYS_TOML_EOF', '']
+    lines += ['echo "[System] system.toml listo — ya debería aparecer en \'Elegir Sistema\'."']
+
+    return lines
+
 
 def write_run_script(run_name: str, sections: list[list[str]]) -> Path:
     """Concatenate stage sections and write run.sh. Returns its path."""

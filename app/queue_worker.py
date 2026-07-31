@@ -46,8 +46,14 @@ def _next_id() -> str:
     return f"{last + 1:03d}"
 
 
-def enqueue(run_name: str, script_path: Path) -> dict:
-    """Create a pending job JSON and return the job dict."""
+def enqueue(run_name: str, script_path: Path, meta: dict | None = None) -> dict:
+    """Create a pending job JSON and return the job dict.
+
+    `meta` guarda datos de *intención* al momento de encolar (por ejemplo,
+    si se pidió minimización de confs) — necesarios para poder distinguir
+    después "todavía no llegó a esa etapa" de "nunca se pidió", algo que
+    no se puede inferir solo mirando qué archivos existen en disco.
+    """
     job_id   = _next_id()
     filename = f"{job_id}_{run_name}.json"
     job = {
@@ -58,6 +64,7 @@ def enqueue(run_name: str, script_path: Path) -> dict:
         "created_at":  datetime.now(timezone.utc).isoformat(),
         "started_at":  None,
         "finished_at": None,
+        "meta":        meta or {},
     }
     (queue_dir() / filename).write_text(json.dumps(job, indent=2))
     log.info("Enqueued job %s → %s", job_id, run_name)
@@ -73,6 +80,43 @@ def get_job_by_run_name(run_name: str) -> dict | None:
         return json.loads(matches[0].read_text())
     except Exception:
         return None
+
+
+def confmin_status(job: dict) -> dict:
+    """Estado de la minimización de confs para un job de la cola.
+
+    Combina dos cosas que no se pueden inferir solo mirando el disco:
+    - la INTENCIÓN al encolar (job["meta"]["confmin_enabled"]), y
+    - lo que efectivamente dejó esa etapa (confs_min/summary.csv).
+
+    state: "not_requested" | "pending" | "done" | "partial"
+    """
+    meta = job.get("meta") or {}
+    if not meta.get("confmin_enabled"):
+        return {"state": "not_requested", "label": "Sin minimización"}
+
+    from .pipeline import DATA_DIR  # import local: evita ciclo con pipeline en el tope del módulo
+    summary = DATA_DIR / job["run_name"] / "confs_min" / "summary.csv"
+    if not summary.exists():
+        return {"state": "pending", "label": "Minimización pendiente"}
+
+    try:
+        rows = [r for r in summary.read_text().splitlines()[1:] if r.strip()]
+    except Exception:
+        return {"state": "pending", "label": "Minimización pendiente"}
+
+    total    = len(rows)
+    ok       = sum(1 for r in rows if r.rstrip().endswith(",ok"))
+    expected = meta.get("n_confs_expected")
+
+    if expected and total < expected:
+        # El summary existe pero todavía no tiene todas las filas
+        # esperadas: la etapa está corriendo (o se cortó a mitad de camino).
+        return {"state": "pending", "label": f"Minimización en curso ({total}/{expected})"}
+
+    if total and ok == total:
+        return {"state": "done", "label": f"Minimizado ({ok}/{total})"}
+    return {"state": "partial", "label": f"Minimizado parcial ({ok}/{total})"}
 
 
 def _job_path(job_id: str, run_name: str) -> Path | None:

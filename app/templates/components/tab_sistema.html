@@ -187,6 +187,8 @@
                                  done:'text-green-400', failed:'text-red-400', cancelled:'text-slate-600' };
             const statusLbl = { pending:'En espera', running:'Ejecutando',
                                  done:'Completado', failed:'Fallido', cancelled:'Cancelado' };
+            const confminCls = { not_requested:'text-slate-600', pending:'text-amber-400',
+                                  done:'text-green-500/80', partial:'text-amber-400' };
             jobs.forEach(job => {
                 const row = document.createElement('div');
                 row.className = 'flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-border-dim bg-surface-700/50 cursor-pointer hover:border-accent/40 hover:bg-surface-700/80 transition-all duration-150';
@@ -196,10 +198,13 @@
                 const created = job.created_at
                     ? new Date(job.created_at).toLocaleString('es-AR',{dateStyle:'short',timeStyle:'short'})
                     : '—';
+                const confmin    = job.confmin || { state: 'not_requested', label: 'Sin minimización' };
+                const confminCol = confminCls[confmin.state] || 'text-slate-600';
                 row.innerHTML = `
                     <div class="min-w-0 flex-1 space-y-0.5">
                         <p class="font-mono text-xs font-bold text-slate-200 truncate">${job.run_name}</p>
                         <p class="font-mono text-xs text-slate-600">#${job.id} · ${created}</p>
+                        <p class="font-mono text-xs ${confminCol}">${confmin.label}</p>
                     </div>
                     <span class="font-mono text-xs ${cls} whitespace-nowrap">${lbl}</span>
                     ${job.status === 'pending' ? `

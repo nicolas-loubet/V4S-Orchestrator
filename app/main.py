@@ -107,8 +107,12 @@ def _ensure_xyz(system_dir: Path) -> bool:
     """
     Genera solute.xyz a partir de conf-0.gro si no existe o si el GRO es mas nuevo.
     Devuelve True si el archivo existe al finalizar.
+
+    conf-0.gro vive en estabilizacion/confs/ (donde lo deja trjconv -sep),
+    no en la raíz de la carpeta del sistema — la raíz es solo donde vive
+    system.toml + este solute.xyz derivado, no una copia de los confs.
     """
-    gro  = system_dir / "conf-0.gro"
+    gro  = system_dir / "estabilizacion" / "confs" / "conf-0.gro"
     xyz  = system_dir / "solute.xyz"
 
     if not gro.exists():

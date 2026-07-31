@@ -19,8 +19,12 @@ log = logging.getLogger(__name__)
 
 @queue_router.get("")
 async def list_queue():
-    """Return all jobs sorted by id."""
-    return JSONResponse(qw.list_jobs())
+    """Return all jobs sorted by id, con el estado de minimización de confs
+    (sin minimización pedida / pendiente / minimizado) adjunto a cada uno."""
+    jobs = qw.list_jobs()
+    for job in jobs:
+        job["confmin"] = qw.confmin_status(job)
+    return JSONResponse(jobs)
 
 
 @queue_router.delete("/{job_id}")

@@ -22,6 +22,8 @@ from .pipeline import (
     build_equilibration_script,
     build_production_script,
     build_confs_minimization_script,
+    build_system_toml_script,
+    compute_n_confs,
     write_run_script,
 )
 
@@ -171,10 +173,25 @@ async def launch_solvate(
             nsteps1          = confmin_nsteps1,
         ))
 
+    # 6. system.toml — SIEMPRE se escribe, con o sin minimización. Es lo que
+    # hace que la corrida aparezca en "Elegir Sistema" al terminar.
+    n_confs_expected = compute_n_confs(prod_nsteps, prod_dt, prod_nstxout)
+    sections.append(build_system_toml_script(
+        run_name             = run_name,
+        total_simulated_ns   = prod_nsteps * prod_dt / 1_000_000,  # nsteps * dt(fs) / 1e6 = ns
+        snapshot_interval_ps = prod_nstxout,
+        ensemble             = prod_ensemble,
+        n_confs              = n_confs_expected,
+        confmin_enabled      = confmin_enabled == "1",
+    ))
+
     script_path = write_run_script(run_name, sections)
 
     # ── Enqueue ────────────────────────────────────────────────────────
-    job = qw.enqueue(run_name, script_path)
+    job = qw.enqueue(run_name, script_path, meta={
+        "confmin_enabled":   confmin_enabled == "1",
+        "n_confs_expected":  n_confs_expected,
+    })
     return JSONResponse({"status": "queued", "job_id": job["id"], "run": run_name})
 
 
