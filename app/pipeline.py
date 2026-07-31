@@ -548,6 +548,146 @@ gen_vel              = no{_mdp_extra_lines(extra_mdp)}"""
         needs_posres_ref = _mdp_needs_posres_ref(mdp_content),
     )
     lines += ['echo "[Production] Complete."']
+
+    # ── Separar la trayectoria en confs individuales (conf-*.gro) ──────
+    # Insumo para build_confs_minimization_script(), que se agrega como
+    # una sección aparte a continuación de esta en el pipeline.
+    confs_dir = stab_dir / "confs"
+    lines += [
+        "",
+        "# ── Separación de trayectoria (trjconv -sep) ────────────────────",
+        'echo "[Production] Separando trayectoria en confs individuales..."',
+        f'CONFS_DIR="{confs_dir}"',
+        'mkdir -p "$CONFS_DIR"',
+        (f'echo 0 | {GMX} trjconv'
+         f' -f "{stab_dir}/PROD.xtc"'
+         f' -s "{stab_dir}/PROD.tpr"'
+         f' -o "$CONFS_DIR/conf-.gro"'
+         f' -sep'
+         f' >> "$GMX_LOG" 2>&1'),
+        'N_CONFS=$(ls "$CONFS_DIR"/conf-*.gro 2>/dev/null | wc -l)',
+        'echo "[Production] $N_CONFS confs generados en confs/."',
+    ]
+
+    return lines
+
+
+def build_confs_minimization_script(
+    run_name:         str,
+    prod_nsteps:       int,
+    prod_dt_fs:        float,
+    prod_nstxout_ps:   float,
+    last_equil_label:  str | None,   # mismo criterio de referencia que PROD
+    posres_define:     str,          # ej. "-DPOSRES"; vacío = sin restricciones
+    emtol1:            float,        # EM-1 (estricto): configurable en la UI
+    nsteps1:           int,          # EM-1 (estricto): configurable en la UI
+) -> list[str]:
+    """
+    Minimiza cada conf-N.gro (generado por trjconv -sep en producción) con
+    una escalera de hasta 3 niveles, del más estricto al más laxo. Por cada
+    conf se prueba EM-1; si no converge (no aparece el .gro de salida) se
+    prueba EM-2, y si tampoco, EM-3. El primero que converge gana y se
+    pasa al siguiente conf. Si ninguno converge, el conf queda "en blanco"
+    (no genera em-N.gro) y el pipeline sigue sin cortarse.
+
+    Solo EM-1 es configurable desde la UI (posres_define/emtol1/nsteps1).
+    EM-2 y EM-3 son laxados automáticamente como múltiplos de EM-1 —
+    son de resguardo ante fallos, no un ajuste fino por sistema.
+    """
+    stab_dir  = DATA_DIR / run_name / "estabilizacion"
+    confs_dir = stab_dir / "confs"
+    min_dir   = DATA_DIR / run_name / "confs_min"      # carpeta nueva, aparte
+
+    # Misma cuenta de frames que usó trjconv -sep en producción, y mismo
+    # criterio de referencia (-r) que PROD: la estructura de entrada a esa
+    # etapa (última equilibración, o EM si no hubo equilibración).
+    nstxout_comp = max(1, round(prod_nstxout_ps * 1000 / prod_dt_fs))
+    n_confs      = prod_nsteps // nstxout_comp + 1
+
+    if last_equil_label:
+        ref_gro = f'"{stab_dir}/{last_equil_label}.gro"'
+    else:
+        ref_gro = f'"{stab_dir}/EM.gro"'
+
+    top_path = f'"{stab_dir}/system.top"'
+
+    define_ok   = bool(posres_define and posres_define.strip())
+    define_line = f"\ndefine               = {posres_define.strip()}" if define_ok else ""
+
+    def _level_mdp(emtol: float, nsteps: int) -> str:
+        return f"""; Minimization (confs_min)
+integrator           = steep
+emtol                = {emtol}
+emstep               = 0.001
+nsteps               = {nsteps}
+
+; Neighborsearching
+nstlist              = 1
+cutoff-scheme        = Verlet
+ns_type              = grid
+rlist                = 1.0
+coulombtype          = PME
+rcoulomb             = 1.0
+rvdw                 = 1.0
+pbc                  = xyz{define_line}"""
+
+    # EM-2/EM-3: laxados como múltiplos de EM-1, no hardcodeados a un valor
+    # fijo — así se adaptan solos a la escala de emtol que uses (varía
+    # mucho según sistema/unidades), en vez de un número mágico que solo
+    # tendría sentido para un caso puntual.
+    levels = [
+        (1, emtol1,       nsteps1),
+        (2, emtol1 * 3.0, max(1, min(nsteps1, 200_000))),
+        (3, emtol1 * 8.0, max(1, min(nsteps1, 50_000))),
+    ]
+
+    lines = [
+        "# ── Minimización de confs (escalera de niveles) ─────────────────",
+        f'MIN_DIR="{min_dir}"',
+        f'CONFS_DIR="{confs_dir}"',
+        'mkdir -p "$MIN_DIR"',
+        "",
+    ]
+
+    for lvl, emtol, nsteps in levels:
+        mdp_content = _level_mdp(emtol, nsteps)
+        lines += [f'echo "[MinConfs] Escribiendo EM-{lvl}.mdp (emtol={emtol}, nsteps={nsteps})..."']
+        lines += _heredoc(f'"$MIN_DIR/EM-{lvl}.mdp"', mdp_content)
+
+    ref_flag = f' -r {ref_gro}' if define_ok else ""
+
+    lines += [
+        f'echo "[MinConfs] Minimizando {n_confs} confs (hasta 3 niveles cada uno)..."',
+        'CONF_COUNT=0',
+        'CONV_COUNT=0',
+        'echo "conf,nivel,estado" > "$MIN_DIR/summary.csv"',
+        "",
+        f'for j in $(seq 0 {n_confs - 1}); do',
+        '    CONF="$CONFS_DIR/conf-${j}.gro"',
+        '    [ -f "$CONF" ] || continue',
+        '    CONF_COUNT=$((CONF_COUNT + 1))',
+        '    DONE=0',
+        '    for lvl in 1 2 3; do',
+        (f'        set +e; {GMX} grompp -f "$MIN_DIR/EM-${{lvl}}.mdp" -c "$CONF"{ref_flag}'
+         f' -p {top_path} -maxwarn 1 -o "$MIN_DIR/em-${{j}}.tpr" >> "$GMX_LOG" 2>&1; set -e'),
+        f'        set +e; {GMX} mdrun -deffnm "$MIN_DIR/em-${{j}}" >> "$GMX_LOG" 2>&1; set -e',
+        '        rm -f "$MIN_DIR/em-${j}.edr" "$MIN_DIR/em-${j}.log" "$MIN_DIR/em-${j}.tpr" \\',
+        '               "$MIN_DIR/em-${j}.trr" "$MIN_DIR"/step*.pdb "$MIN_DIR/mdout.mdp"',
+        '        if [ -f "$MIN_DIR/em-${j}.gro" ]; then',
+        '            DONE=1',
+        '            CONV_COUNT=$((CONV_COUNT + 1))',
+        '            echo "${j},${lvl},ok" >> "$MIN_DIR/summary.csv"',
+        '            break',
+        '        fi',
+        '    done',
+        '    if [ "$DONE" -eq 0 ]; then',
+        '        echo "${j},-,fallido" >> "$MIN_DIR/summary.csv"',
+        '    fi',
+        'done',
+        "",
+        'echo "[MinConfs] $CONV_COUNT/$CONF_COUNT confs minimizados. Detalle en confs_min/summary.csv"',
+    ]
+
     return lines
 
 def write_run_script(run_name: str, sections: list[list[str]]) -> Path:

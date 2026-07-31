@@ -21,6 +21,7 @@ from .pipeline import (
     build_minimization_script,
     build_equilibration_script,
     build_production_script,
+    build_confs_minimization_script,
     write_run_script,
 )
 
@@ -58,6 +59,11 @@ async def launch_solvate(
     prod_nstxout:    float      = Form(10.0),
     prod_aniso:      str        = Form("0"),
     prod_extra:      str        = Form(""),
+    # Minimización de confs (post-producción, escalera de niveles)
+    confmin_enabled: str        = Form("0"),
+    confmin_posres:  str        = Form("-DPOSRES"),
+    confmin_emtol1:  float      = Form(12.0),
+    confmin_nsteps1: int        = Form(1000000000000),
     gro_file:        UploadFile = File(...),
     top_file:        UploadFile = File(...),
 ):
@@ -151,6 +157,19 @@ async def launch_solvate(
         extra_mdp        = prod_extra,
         last_equil_label = last_equil_label,
     ))
+
+    # 5. Minimización de confs (opcional — post-producción, escalera de niveles)
+    if confmin_enabled == "1":
+        sections.append(build_confs_minimization_script(
+            run_name         = run_name,
+            prod_nsteps      = prod_nsteps,
+            prod_dt_fs       = prod_dt,
+            prod_nstxout_ps  = prod_nstxout,
+            last_equil_label = last_equil_label,
+            posres_define    = confmin_posres,
+            emtol1           = confmin_emtol1,
+            nsteps1          = confmin_nsteps1,
+        ))
 
     script_path = write_run_script(run_name, sections)
 

@@ -322,6 +322,65 @@
         </div>
     </section>
 
+    {# ── 5. Minimización de confs (post-producción, opcional) ─────────── #}
+    <section class="rounded-lg border border-border-dim bg-surface-700/50 overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-2.5 border-b border-border-dim bg-surface-800/60">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 text-accent" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+            <span class="font-mono text-xs font-bold text-accent uppercase tracking-widest">Minimización de confs</span>
+        </div>
+        <div class="px-4 py-4 space-y-4">
+            <div class="flex items-center gap-2">
+                <button type="button" id="confmin-enabled-btn" role="switch" aria-checked="false"
+                        onclick="window.toggleConfminEnabled()"
+                        class="aniso-btn relative w-8 h-4 rounded-full border border-border-dim bg-surface-600
+                               transition-colors duration-150 focus:outline-none">
+                    <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-slate-500
+                                 transition-all duration-150 toggle-thumb"></span>
+                </button>
+                <span class="font-mono text-xs text-slate-400">
+                    Minimizar cada conf de producción por separado (escalera de hasta 3 niveles)
+                </span>
+            </div>
+
+            <div id="confmin-fields" class="hidden space-y-3">
+                <p class="font-mono text-xs text-slate-500 leading-relaxed">
+                    Se corre después de separar la trayectoria (<code class="text-slate-400">trjconv -sep</code>).
+                    Cada conf se intenta minimizar con EM-1; si no converge, se reintenta automáticamente con
+                    EM-2 y EM-3 (más laxos, calculados solos a partir de EM-1). Un conf que no converge en
+                    ningún nivel queda sin generar salida — no corta el pipeline.
+                </p>
+                <div class="flex flex-wrap gap-4 items-end">
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">define (posres)</label>
+                        <input type="text" id="confmin-posres" value="-DPOSRES" placeholder="ej. -DPOSRES (vacío = sin restricción)"
+                               class="font-mono text-xs w-52 px-2 py-1.5 rounded border border-border-dim
+                                      bg-surface-800 text-slate-200 placeholder-slate-700
+                                      focus:border-accent/60 focus:outline-none" />
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">emtol-1 (EM-1, estricto)</label>
+                        <input type="number" id="confmin-emtol1" value="12" min="0" step="0.1"
+                               class="run-num-input font-mono text-xs w-28 px-2 py-1.5 rounded border border-border-dim
+                                      bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">nsteps-1 (EM-1)</label>
+                        <input type="number" id="confmin-nsteps1" value="1000000000000" min="1" step="1"
+                               class="run-num-input font-mono text-xs w-40 px-2 py-1.5 rounded border border-border-dim
+                                      bg-surface-800 text-slate-200 focus:border-accent/60 focus:outline-none" />
+                    </div>
+                </div>
+                <p class="font-mono text-xs text-slate-600">
+                    EM-2 (×3 emtol, tope 200k pasos) y EM-3 (×8 emtol, tope 50k pasos) son de resguardo — no se ajustan a mano.
+                </p>
+            </div>
+        </div>
+    </section>
+
     {# ── Botón lanzar ──────────────────────────────────────────────── #}
     <div class="rounded-lg border border-border-dim bg-surface-800/80 px-5 py-4
                 flex items-center justify-between gap-4">
@@ -758,6 +817,14 @@
         btn.setAttribute('aria-checked', active ? 'true' : 'false');
     }
 
+    function toggleConfminEnabled() {
+        const btn = document.getElementById('confmin-enabled-btn');
+        toggleAniso(btn); // mismo switch genérico de aria-checked que usa Aniso
+        const enabled = btn.getAttribute('aria-checked') === 'true';
+        document.getElementById('confmin-fields').classList.toggle('hidden', !enabled);
+    }
+    window.toggleConfminEnabled = toggleConfminEnabled;
+
     function toggleStabMdpExtra(btn) {
         const area   = btn.closest('.space-y-1').querySelector('.mdp-extra-area');
         const icon   = btn.querySelector('.mdp-toggle-icon');
@@ -836,6 +903,10 @@
             prodNstxout:   document.getElementById('prod-nstxout')?.value,
             prodAniso:     document.getElementById('prod-aniso-btn')?.getAttribute('aria-checked') === 'true',
             prodExtra:     document.getElementById('prod-mdp-extra')?.value || '',
+            confminEnabled: document.getElementById('confmin-enabled-btn')?.getAttribute('aria-checked') === 'true',
+            confminPosres:  document.getElementById('confmin-posres')?.value ?? '-DPOSRES',
+            confminEmtol1:  document.getElementById('confmin-emtol1')?.value,
+            confminNsteps1: document.getElementById('confmin-nsteps1')?.value,
         };
     }
 
@@ -904,6 +975,11 @@
             document.getElementById('prod-mdp-extra').value = state.prodExtra;
             if (document.getElementById('prod-mdp-extra').classList.contains('hidden')) toggleMdpExtra('prod');
         }
+
+        if (state.confminEnabled) toggleConfminEnabled();
+        if (state.confminPosres  != null) document.getElementById('confmin-posres').value  = state.confminPosres;
+        if (state.confminEmtol1  != null) document.getElementById('confmin-emtol1').value  = state.confminEmtol1;
+        if (state.confminNsteps1 != null) document.getElementById('confmin-nsteps1').value = state.confminNsteps1;
 
         updateProdSummary();
         updateLaunchBtn();
@@ -1079,6 +1155,13 @@
         fd.append('prod_nstxout',  document.getElementById('prod-nstxout').value);
         fd.append('prod_aniso',    prodAniso ? '1' : '0');
         fd.append('prod_extra',    document.getElementById('prod-mdp-extra').value);
+
+        // Minimización de confs (opcional)
+        const confminEnabled = document.getElementById('confmin-enabled-btn')?.getAttribute('aria-checked') === 'true';
+        fd.append('confmin_enabled', confminEnabled ? '1' : '0');
+        fd.append('confmin_posres',  document.getElementById('confmin-posres').value);
+        fd.append('confmin_emtol1',  document.getElementById('confmin-emtol1').value);
+        fd.append('confmin_nsteps1', document.getElementById('confmin-nsteps1').value);
 
         btn.disabled = true;
         btn.classList.add('opacity-50');
