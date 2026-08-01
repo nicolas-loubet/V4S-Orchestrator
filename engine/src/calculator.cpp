@@ -10,13 +10,19 @@ namespace fs= filesystem;
 
 void writeStatus(const fs::path& dir, const string& state, double progress, int eta_sec, int pid, const string& message, const vector<string>& results= {});
 
-void writeStatusFromTime(const RunConfig& cfg, double& progress, int& eta, int frame_number,
-                         const chrono::time_point<chrono::steady_clock>& start_time, const int num_frames,
-                         const string& label_prefix= "") {
-    progress= static_cast<double>(frame_number) / static_cast<double>(num_frames);
+// progress/eta ahora se calculan sobre el TOTAL de frames de la corrida
+// (todos los sistemas sumados), no solo del sistema que se está procesando
+// en este momento -- frame_offset es cuántos frames ya se procesaron de
+// sistemas anteriores, total_frames es la suma de todos.
+void writeStatusFromTime(const RunConfig& cfg, double& progress, int& eta, int frame_number, int frame_offset, int total_frames,
+                         const chrono::time_point<chrono::steady_clock>& start_time, const string& label_prefix= "") {
+    int global_frame= frame_offset + frame_number;
+    progress= static_cast<double>(global_frame) / static_cast<double>(total_frames);
     auto elapsed_seconds= chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count();
     if(elapsed_seconds == 0) return;
-    eta= static_cast<int>((static_cast<double>(elapsed_seconds) / frame_number) * (num_frames - frame_number));
+    // Tasa medida en ESTE sistema (start_time se resetea por sistema), extrapolada
+    // a lo que falta en TODA la corrida (no solo en el sistema actual).
+    eta= static_cast<int>((static_cast<double>(elapsed_seconds) / frame_number) * (total_frames - global_frame));
     writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, label_prefix+"Procesando frames "+to_string(frame_number)+"-"+to_string(frame_number+19));
 }
 
@@ -105,18 +111,29 @@ string escribirGRO(Vector pos, int res) {
 }
 */
 
+// Un sistema resuelto junto con la lista de frames ya globbeada. Se
+// precomputa una sola vez en el orquestador (runCalculation) para no
+// re-globbear adentro de runCalculationForSystem, y para poder conocer de
+// antemano cuántos frames hay en TOTAL entre todos los sistemas.
+struct SystemFiles {
+    ResolvedSystem rs;
+    vector<pair<int,string>> files;
+};
+
 // Corre el pipeline completo (topología + filtro + loop de frames) para UN
-// sistema ya resuelto (root de topología + carpeta/prefijo de dataset ya
-// concretos). No escribe a disco: devuelve el Writer normalizado para que el
-// orquestador decida dónde y cómo persistirlo (archivo único, o combinado
-// entre varios sistemas en modo grupo).
-unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const ResolvedSystem& rs) {
+// sistema ya resuelto. No escribe a disco: devuelve el Writer normalizado
+// para que el orquestador decida dónde y cómo persistirlo (archivo único, o
+// combinado entre varios sistemas en modo grupo).
+// frame_offset/total_frames son solo para reportar progreso agregado en
+// status.toml -- no afectan el cálculo en sí.
+unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const ResolvedSystem& rs,
+                                                    const vector<pair<int,string>>& files,
+                                                    int frame_offset, int total_frames) {
     const string label_prefix= rs.label.empty() ? "" : ("[" + rs.label + "] ");
 
     TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology((rs.root / "system.top").string());
     CoordinateReader* cr= ReaderFactory::createCoordinateReader(ReaderFactory::ProgramFormat::GROMACS);
 
-    auto files= CoordinateReader::getFileIterator(rs.dataset_dir.string(), rs.prefix + "*.gro");
     double progress= 0.0; int eta= 0;
     auto start_time= chrono::steady_clock::now();
 
@@ -141,7 +158,7 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
 
     unique_ptr<Writer::Output> writer;
     int n_atoms= cfg.sph_autocenter ? list_atom_names.size() : 0;
-    int num_frames= files[files.size()-1].first;
+    int num_frames= files.empty() ? 0 : files[files.size()-1].first; // LOCAL a este sistema: dimensiona el writer, no el progreso
     if(cfg.output_mode == "mean") {
         if(cfg.sph_autocenter) writer= make_unique<Writer::OutputMeanAtoms>(n_atoms);
         else                   writer= make_unique<Writer::OutputMeanSimple>();
@@ -151,7 +168,9 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
     }
 
     for(const auto& [frame_number, filename]: files) {
-        if(frame_number % 20 == 0 && frame_number > 0) { writeStatusFromTime(cfg, progress, eta, frame_number, start_time, files[files.size()-1].first, label_prefix); }
+        if(frame_number % 20 == 0 && frame_number > 0) {
+            writeStatusFromTime(cfg, progress, eta, frame_number, frame_offset, total_frames, start_time, label_prefix);
+        }
 
         Configuration conf(cr, (rs.dataset_dir / filename).string(), ti);
 
@@ -180,40 +199,53 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
 }
 
 // Orquesta sobre cfg.systems (1 elemento en modo sistema individual, N en
-// modo grupo). Dos casos:
-//  - grupo + output_mode=="mean": un único CSV combinado, una fila (o varias,
-//    si es _atoms) por subsistema, con columna 'label' al frente.
-//  - cualquier otro caso (sistema individual, o grupo + "time"): cada sistema
-//    escribe su propio archivo — en la raíz de results/ si es un único
-//    sistema (idéntico al comportamiento de antes), o bajo results/<label>/
-//    si hay varios (para no pisarse entre sí).
+// modo grupo). Precomputa los frames de cada sistema una sola vez (para el
+// progreso agregado, ver arriba), y después:
+//  - grupo + output_mode=="mean": un único CSV combinado (OutputMeanGrouped),
+//    con columna 'label' al frente.
+//  - cualquier otro caso: cada sistema escribe su propio archivo -- en la
+//    raíz de results/ si es un único sistema (idéntico a como era antes), o
+//    bajo results/<label>/ si hay varios (para no pisarse entre sí).
 void runCalculation(RunConfig& cfg) {
     const bool grouped= cfg.systems.size() > 1;
     const string base_file_name= cfg.output_mode + (cfg.sph_autocenter ? "_atoms" : "") + ".csv";
     vector<string> written_files;
 
-    if(grouped && cfg.output_mode == "mean") {
-        Writer::OutputMeanGrouped combined;
-        for(const ResolvedSystem& rs: cfg.systems) {
-            unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, rs);
+    vector<SystemFiles> all_files;
+    all_files.reserve(cfg.systems.size());
+    int total_frames= 0;
+    for(const ResolvedSystem& rs: cfg.systems) {
+        auto files= CoordinateReader::getFileIterator(rs.dataset_dir.string(), rs.prefix + "*.gro");
+        total_frames+= files.empty() ? 0 : files.back().first;
+        all_files.push_back(SystemFiles{rs, move(files)});
+    }
+
+    const bool combine_mean= grouped && cfg.output_mode == "mean";
+    Writer::OutputMeanGrouped combined;
+    int frame_offset= 0;
+
+    for(const SystemFiles& sf: all_files) {
+        unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, sf.rs, sf.files, frame_offset, total_frames);
+        frame_offset+= sf.files.empty() ? 0 : sf.files.back().first;
+
+        if(combine_mean) {
             auto* row_source= dynamic_cast<Writer::MeanRowSource*>(writer.get());
             if(!row_source) throw runtime_error("Writer inesperado para output_mode=\"mean\" (esto no debería pasar)");
-            combined.addSubsystem(rs.label, *row_source, cfg);
-        }
-        combined.write(base_file_name, cfg);
-        written_files.push_back(base_file_name);
-    } else {
-        for(const ResolvedSystem& rs: cfg.systems) {
-            unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, rs);
-
+            combined.addSubsystem(sf.rs.label, *row_source, cfg);
+        } else {
             string relative_path= base_file_name;
             if(grouped) {
-                fs::create_directories(cfg.run_dir / "results" / rs.label);
-                relative_path= rs.label + "/" + base_file_name;
+                fs::create_directories(cfg.run_dir / "results" / sf.rs.label);
+                relative_path= sf.rs.label + "/" + base_file_name;
             }
             writer->write(relative_path, cfg);
             written_files.push_back(relative_path);
         }
+    }
+
+    if(combine_mean) {
+        combined.write(base_file_name, cfg);
+        written_files.push_back(base_file_name);
     }
 
     writeStatus(cfg.run_dir, "finished", 100.0, 0, cfg.pid, "Completado exitosamente", written_files);
