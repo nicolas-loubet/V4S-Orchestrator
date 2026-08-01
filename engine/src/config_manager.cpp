@@ -21,6 +21,13 @@ struct TomlValue {
 using TomlSection = std::map<std::string, TomlValue>;
 using TomlDoc     = std::map<std::string, TomlSection>;
 
+// Resultado completo de parsear un archivo TOML: secciones simples [x] +
+// arrays de tablas [[x]] (necesarios para group.toml -> [[subsystem]]).
+struct TomlData {
+    TomlDoc sections;
+    std::map<std::string, std::vector<TomlSection>> arrays;
+};
+
 static std::string trim(const std::string& s) {
     size_t a= s.find_first_not_of(" \t\r\n");
     size_t b= s.find_last_not_of(" \t\r\n");
@@ -33,25 +40,38 @@ static std::string stripQuotes(const std::string& s) {
     return s;
 }
 
-static TomlDoc parseTOML(const fs::path& path) {
+static TomlData parseTOML(const fs::path& path) {
     std::ifstream file(path);
     if(!file.is_open()) throw std::runtime_error("No se pudo abrir: " + path.string());
 
-    TomlDoc doc;
-    std::string currentSection;
+    TomlData result;
+    TomlSection* currentTable= nullptr; // sección o tabla de array actualmente activa
     std::string line;
 
     while(std::getline(file, line)) {
         line= trim(line);
         if(line.empty() || line[0] == '#') continue;
 
+        // Array de tablas: [[nombre]] — debe chequearse ANTES que [nombre],
+        // porque también matchea el chequeo de "empieza y termina con corchete".
+        if(line.size() >= 5 && line[0] == '[' && line[1] == '[' &&
+           line[line.size()-1] == ']' && line[line.size()-2] == ']') {
+            std::string name= trim(line.substr(2, line.size()-4));
+            result.arrays[name].push_back(TomlSection{});
+            currentTable= &result.arrays[name].back();
+            continue;
+        }
+
+        // Sección simple: [nombre] (incluye "dataset.real", "dataset.inherent", etc.)
         if(line[0] == '[' && line.back() == ']') {
-            currentSection= trim(line.substr(1, line.size()-2));
+            std::string name= trim(line.substr(1, line.size()-2));
+            currentTable= &result.sections[name];
             continue;
         }
 
         size_t eq= line.find('=');
         if(eq == std::string::npos) continue;
+        if(currentTable == nullptr) continue; // key=value suelta antes de cualquier sección: se ignora
 
         std::string key= trim(line.substr(0, eq));
         std::string val= trim(line.substr(eq+1));
@@ -98,9 +118,9 @@ static TomlDoc parseTOML(const fs::path& path) {
                 tv.str = val;
             }
         }
-        doc[currentSection][key]= tv;
+        (*currentTable)[key]= tv;
     }
-    return doc;
+    return result;
 }
 
 static std::string getString(const TomlDoc& doc, const std::string& sec, const std::string& key, const std::string& def= "") {
@@ -144,6 +164,14 @@ static std::vector<std::string> getArray(const TomlDoc& doc, const std::string& 
     return k->second.arr;
 }
 
+// Helper para leer un campo string de una tabla suelta (usado con las tablas
+// de [[subsystem]], que no viven dentro de un TomlDoc sino de un vector<TomlSection>).
+static std::string getStringFromTable(const TomlSection& table, const std::string& key, const std::string& def= "") {
+    auto k= table.find(key);
+    if(k == table.end()) return def;
+    return k->second.str.empty() ? def : k->second.str;
+}
+
 static std::vector<std::string> splitNames(std::string names, const std::string delimiter=" ") {
     std::vector<std::string> res;
     size_t pos= 0;
@@ -155,6 +183,160 @@ static std::vector<std::string> splitNames(std::string names, const std::string 
     return res;
 }
 
+// ---------------------------------------------------------------------------
+// system.toml / group.toml
+// ---------------------------------------------------------------------------
+
+struct DatasetInfo {
+    bool        enabled= false;
+    std::string path;
+    std::string prefix;
+    int         n_confs= 0;
+    int         n_converged= 0;
+    std::string summary;
+};
+
+struct SystemInfo {
+    std::string name;
+    std::string description;
+    double      total_simulated_ns= 0.0;
+    double      snapshot_interval_ps= 0.0;
+    std::string ensemble;
+    DatasetInfo dataset_real;
+    DatasetInfo dataset_inherent;
+};
+
+struct SubsystemRef {
+    std::string label;
+    std::string path; // relativo a la carpeta del grupo
+};
+
+struct GroupInfo {
+    std::string name;
+    std::string description;
+    std::string variable;
+    bool        afecta_conf= false;
+    std::vector<SubsystemRef> subsystems;
+};
+
+static SystemInfo parseSystemToml(const fs::path& system_toml_path) {
+    if(!fs::exists(system_toml_path))
+        throw std::runtime_error("No existe system.toml: " + system_toml_path.string());
+
+    TomlData doc= parseTOML(system_toml_path);
+    SystemInfo si;
+
+    si.name                 = getString(doc.sections, "info", "name");
+    si.description          = getString(doc.sections, "info", "description");
+    si.total_simulated_ns   = getDouble(doc.sections, "simulation", "total_simulated_ns");
+    si.snapshot_interval_ps = getDouble(doc.sections, "simulation", "snapshot_interval_ps");
+    si.ensemble             = getString(doc.sections, "simulation", "ensemble");
+
+    // Dataset real: siempre existe (es la trayectoria de producción tal cual).
+    si.dataset_real.enabled = true;
+    si.dataset_real.path    = getString(doc.sections, "dataset.real", "path", "estabilizacion/confs");
+    si.dataset_real.prefix  = getString(doc.sections, "dataset.real", "prefix", "conf-");
+    si.dataset_real.n_confs = getInt   (doc.sections, "dataset.real", "n_confs");
+
+    // Dataset inherente: opcional, depende de si se corrió minimización de confs.
+    si.dataset_inherent.enabled     = getBool  (doc.sections, "dataset.inherent", "enabled", false);
+    si.dataset_inherent.path        = getString(doc.sections, "dataset.inherent", "path");
+    si.dataset_inherent.prefix      = getString(doc.sections, "dataset.inherent", "prefix", "em-");
+    si.dataset_inherent.n_confs     = getInt   (doc.sections, "dataset.inherent", "n_confs");
+    si.dataset_inherent.n_converged = getInt   (doc.sections, "dataset.inherent", "n_converged");
+    si.dataset_inherent.summary     = getString(doc.sections, "dataset.inherent", "summary");
+
+    return si;
+}
+
+static GroupInfo parseGroupToml(const fs::path& group_toml_path) {
+    if(!fs::exists(group_toml_path))
+        throw std::runtime_error("No existe group.toml: " + group_toml_path.string());
+
+    TomlData doc= parseTOML(group_toml_path);
+    GroupInfo gi;
+
+    gi.name         = getString(doc.sections, "group", "name");
+    gi.description  = getString(doc.sections, "group", "description");
+    gi.variable     = getString(doc.sections, "group", "variable");
+    gi.afecta_conf  = getBool  (doc.sections, "group", "afecta_conf", false);
+
+    auto it= doc.arrays.find("subsystem");
+    if(it != doc.arrays.end()) {
+        for(const TomlSection& tbl: it->second) {
+            SubsystemRef sr;
+            sr.label= getStringFromTable(tbl, "label");
+            sr.path = getStringFromTable(tbl, "path");
+            if(sr.label.empty() || sr.path.empty())
+                throw std::runtime_error("[[subsystem]] con 'label' o 'path' faltante en " + group_toml_path.string());
+            gi.subsystems.push_back(sr);
+        }
+    }
+    if(gi.subsystems.empty())
+        throw std::runtime_error("group.toml sin ningún [[subsystem]]: " + group_toml_path.string());
+
+    return gi;
+}
+
+// ---------------------------------------------------------------------------
+// Resolución: de "modo sistema/grupo" + "dataset elegido" a la lista concreta
+// de sistemas sobre los que hay que calcular. Uniforma el caso sistema
+// individual (1 elemento) y grupo (N elementos), para que calculator.cpp
+// pueda iterar siempre de la misma forma.
+// ---------------------------------------------------------------------------
+
+struct ResolvedSystem {
+    std::string label;       // "" en modo sistema individual
+    fs::path    root;        // carpeta con system.top y system.toml
+    fs::path    dataset_dir; // root / dataset.path
+    std::string prefix;      // dataset.prefix
+};
+
+// Valida el dataset elegido contra el system.toml de un sistema puntual y,
+// si es válido, arma su ResolvedSystem. Corta duro (excepción) si el dataset
+// pedido no está disponible — es la validación acordada como responsabilidad
+// del motor, no de Python.
+static ResolvedSystem resolveOne(const fs::path& root, const std::string& dataset_which, const std::string& label= "") {
+    SystemInfo si= parseSystemToml(root / "system.toml");
+
+    const DatasetInfo* ds= nullptr;
+    if(dataset_which == "real")           ds= &si.dataset_real;
+    else if(dataset_which == "inherent")  ds= &si.dataset_inherent;
+    else throw std::runtime_error("dataset.which desconocido: '" + dataset_which + "' (esperado 'real' o 'inherent')");
+
+    if(!ds->enabled) {
+        std::string sistema_desc= label.empty() ? root.string() : (label + " (" + root.string() + ")");
+        throw std::runtime_error("El sistema '" + sistema_desc + "' no tiene dataset '" + dataset_which + "' habilitado");
+    }
+
+    ResolvedSystem rs;
+    rs.label      = label;
+    rs.root       = root;
+    rs.dataset_dir= root / ds->path;
+    rs.prefix     = ds->prefix;
+    return rs;
+}
+
+static std::vector<ResolvedSystem> resolveSystems(const fs::path& path, const std::string& modo, const std::string& dataset_which) {
+    std::vector<ResolvedSystem> out;
+
+    if(modo == "sistema") {
+        out.push_back(resolveOne(path, dataset_which));
+    } else if(modo == "grupo") {
+        GroupInfo gi= parseGroupToml(path / "group.toml");
+        out.reserve(gi.subsystems.size());
+        for(const SubsystemRef& sub: gi.subsystems)
+            out.push_back(resolveOne(path / sub.path, dataset_which, sub.label));
+    } else {
+        throw std::runtime_error("meta.modo desconocido: '" + modo + "' (esperado 'sistema' o 'grupo')");
+    }
+
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// RunConfig
+// ---------------------------------------------------------------------------
 
 struct RunConfig {
     fs::path    run_dir;
@@ -162,7 +344,11 @@ struct RunConfig {
 
     std::string run_id;
     std::string sistema_id;
-    fs::path    sistema_path;
+    std::string modo;           // "sistema" | "grupo"
+    fs::path    path;           // raíz del sistema, o de la carpeta del grupo
+    std::string dataset_which;  // "real" | "inherent"
+
+    std::vector<ResolvedSystem> systems; // 1 elemento si modo=="sistema", N si modo=="grupo"
 
     std::vector<std::string> params;
     std::string units;
@@ -184,14 +370,21 @@ struct RunConfig {
 
     void init(fs::path dir) {
         run_dir= dir;
-        pid= getInt(parseTOML(dir / "status.toml"), "status", "pid");
+        pid= getInt(parseTOML(dir / "status.toml").sections, "status", "pid");
 
+        TomlDoc doc= parseTOML(run_dir / "run.toml").sections;
 
-        TomlDoc  doc= parseTOML(run_dir / "run.toml");
+        run_id        = getString(doc, "meta", "run_id");
+        sistema_id    = getString(doc, "meta", "sistema_id");
+        modo          = getString(doc, "meta", "modo", "sistema");
+        path          = getString(doc, "meta", "path");
 
-        run_id         = getString(doc, "meta", "run_id");
-        sistema_id     = getString(doc, "meta", "sistema_id");
-        sistema_path   = getString(doc, "meta", "sistema_path");
+        dataset_which = getString(doc, "dataset", "which", "real");
+
+        // Acá se dispara toda la lectura de system.toml/group.toml y la
+        // validación dura del dataset elegido. Si algo no cierra, tira
+        // runtime_error y main.cpp lo escribe como status="error".
+        systems= resolveSystems(path, modo, dataset_which);
 
         params         = getArray (doc, "parametros", "params");
         units          = getString(doc, "parametros", "units",          "kJ/mol");
