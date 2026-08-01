@@ -7,6 +7,7 @@ import tomli_w
 import uvicorn
 from datetime import datetime, timezone
 from fastapi import Body
+from fastapi import Form, HTTPException
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -103,6 +104,33 @@ def _write_xyz(atoms: list[dict], box: dict, xyz_path: Path) -> None:
             f.write(f"{a['symbol']:2s}  {a['name']:<6s}  {a['x']:12.6f}  {a['y']:12.6f}  {a['z']:12.6f}\n")
 
 
+def _ensure_xyz_from(gro_path: Path, xyz_path: Path) -> bool:
+    """
+    Genera xyz_path a partir de gro_path si no existe o si el GRO es más
+    nuevo. Devuelve True si el archivo existe al finalizar.
+
+    Versión genérica de _ensure_xyz: separa "de dónde sale el conf-0.gro"
+    de "dónde vive el solute.xyz resultante" — necesario para grupos, donde
+    el conf-0.gro sale de la carpeta del subsistema activo pero el
+    solute.xyz vive en la raíz del grupo (ver _ensure_xyz más abajo para
+    el caso normal de un sistema individual, que sigue igual que antes).
+    """
+    if not gro_path.exists():
+        return xyz_path.exists()
+
+    needs_regen = (not xyz_path.exists()) or (gro_path.stat().st_mtime > xyz_path.stat().st_mtime)
+    if needs_regen:
+        try:
+            atoms, box = _parse_gro(gro_path)
+            _write_xyz(atoms, box, xyz_path)
+            print(f"[V4S] solute.xyz generado: {xyz_path} ({len(atoms)} atomos)")
+        except Exception as e:
+            print(f"[V4S] Error generando {xyz_path} desde {gro_path}: {e}")
+            return False
+
+    return xyz_path.exists()
+
+
 def _ensure_xyz(system_dir: Path) -> bool:
     """
     Genera solute.xyz a partir de conf-0.gro si no existe o si el GRO es mas nuevo.
@@ -112,23 +140,72 @@ def _ensure_xyz(system_dir: Path) -> bool:
     no en la raíz de la carpeta del sistema — la raíz es solo donde vive
     system.toml + este solute.xyz derivado, no una copia de los confs.
     """
-    gro  = system_dir / "estabilizacion" / "confs" / "conf-0.gro"
-    xyz  = system_dir / "solute.xyz"
+    gro = system_dir / "estabilizacion" / "confs" / "conf-0.gro"
+    xyz = system_dir / "solute.xyz"
+    return _ensure_xyz_from(gro, xyz)
 
-    if not gro.exists():
-        return xyz.exists()
 
-    needs_regen = (not xyz.exists()) or (gro.stat().st_mtime > xyz.stat().st_mtime)
-    if needs_regen:
-        try:
-            atoms, box = _parse_gro(gro)
-            _write_xyz(atoms, box, xyz)
-            print(f"[V4S] solute.xyz generado: {xyz} ({len(atoms)} atomos)")
-        except Exception as e:
-            print(f"[V4S] Error generando solute.xyz para {system_dir.name}: {e}")
-            return False
+# ---------------------------------------------------------------------------
+# Grupos (subsistemas): una carpeta con group.toml en vez de system.toml.
+# Cada subcarpeta listada es, puertas adentro, un sistema normal (su propio
+# system.toml, estabilizacion/confs/, etc. — sin cambios de esquema). El
+# grupo es una capa fina que las agrupa bajo UNA sola card en "Elegir
+# Sistema"; se arma a mano, no hay UI para crearlo.
+# ---------------------------------------------------------------------------
 
-    return xyz.exists()
+def _load_group(folder: Path) -> dict | None:
+    """Parsea group.toml si existe. None si la carpeta no es un grupo."""
+    group_file = folder / "group.toml"
+    if not group_file.exists():
+        return None
+    try:
+        with open(group_file, "rb") as f:
+            return tomllib.load(f)
+    except Exception as e:
+        print(f"[V4S] Error leyendo {group_file}: {e}")
+        return None
+
+
+def _active_subsystem_path(folder: Path) -> Path:
+    """Ruta al archivo que guarda cuál subsistema está activo para la
+    vista previa 3D del grupo (solo relevante si afecta_conf = true)."""
+    return folder / "active_subsystem.txt"
+
+
+def _resolve_active_subsystem(folder: Path, subsystems: list[dict]) -> dict:
+    """
+    Cuál subsistema usar para conf-0.gro / solute.xyz del grupo.
+    Default: el primero de la lista. Si hay un active_subsystem.txt con un
+    label válido (solo se escribe cuando afecta_conf = true y alguien lo
+    cambió), se usa ese en su lugar.
+    """
+    if not subsystems:
+        return {}
+    marker = _active_subsystem_path(folder)
+    if marker.exists():
+        wanted = marker.read_text().strip()
+        for sub in subsystems:
+            if sub.get("label") == wanted:
+                return sub
+    return subsystems[0]
+
+
+def _ensure_group_xyz(folder: Path, group_meta: dict) -> tuple[bool, dict]:
+    """
+    Genera/actualiza el solute.xyz del grupo (vive en la raíz del grupo,
+    igual que en un sistema normal) a partir del subsistema activo.
+    Devuelve (has_xyz, subsistema_usado).
+    """
+    subsystems = group_meta.get("subsystem", [])
+    active = _resolve_active_subsystem(folder, subsystems)
+    if not active or "path" not in active:
+        return False, {}
+
+    sub_dir = folder / active["path"]
+    gro     = sub_dir / "estabilizacion" / "confs" / "conf-0.gro"
+    xyz     = folder / "solute.xyz"
+    has_xyz = _ensure_xyz_from(gro, xyz)
+    return has_xyz, active
 
 
 # ---------------------------------------------------------------------------
@@ -184,6 +261,15 @@ async def tab_sistema(request: Request):
         for folder in sorted(DATA_PATH.iterdir()):
             if not folder.is_dir():
                 continue
+
+            group_meta = _load_group(folder)
+            if group_meta is not None:
+                try:
+                    sistemas.append(_build_group_card(folder, group_meta))
+                except Exception as e:
+                    print(f"[V4S] Error armando card de grupo para {folder}: {e}")
+                continue
+
             toml_file = folder / "system.toml"
             if not toml_file.exists():
                 continue
@@ -201,6 +287,7 @@ async def tab_sistema(request: Request):
                     "interval_ps": meta.get("simulation", {}).get("snapshot_interval_ps", 0.0),
                     "ensemble":    meta.get("simulation", {}).get("ensemble", "N/A"),
                     "has_xyz":     (folder / "solute.xyz").exists(),
+                    "is_group":    False,
                 })
             except Exception as e:
                 print(f"[V4S] Error leyendo {toml_file}: {e}")
@@ -209,6 +296,45 @@ async def tab_sistema(request: Request):
         "sistemas": sistemas,
         "sistemas_json": json.dumps({s["id"]: s for s in sistemas}, ensure_ascii=False),
     })
+
+
+def _build_group_card(folder: Path, group_meta: dict) -> dict:
+    """
+    Arma la card de 'Elegir Sistema' para un grupo (group.toml). La
+    metadata de simulación (total_ns/interval_ps/ensemble) se toma del
+    primer subsistema — es la misma en todos, por diseño (punto 5: "todo
+    es igual, solo varía la variable").
+    """
+    group      = group_meta.get("group", {})
+    subsystems = group_meta.get("subsystem", [])
+
+    shared_sim = {}
+    if subsystems:
+        first_sub_toml = folder / subsystems[0].get("path", "") / "system.toml"
+        if first_sub_toml.exists():
+            try:
+                with open(first_sub_toml, "rb") as f:
+                    shared_sim = tomllib.load(f).get("simulation", {})
+            except Exception as e:
+                print(f"[V4S] Error leyendo {first_sub_toml}: {e}")
+
+    has_xyz, active_sub = _ensure_group_xyz(folder, group_meta)
+
+    return {
+        "id":            folder.name,
+        "name":          group.get("name", folder.name),
+        "description":   group.get("description", "Sin descripcion."),
+        "total_ns":      shared_sim.get("total_simulated_ns", 0.0),
+        "interval_ps":   shared_sim.get("snapshot_interval_ps", 0.0),
+        "ensemble":      shared_sim.get("ensemble", "N/A"),
+        "has_xyz":       has_xyz,
+        "is_group":      True,
+        "variable":      group.get("variable", ""),
+        "afecta_conf":   bool(group.get("afecta_conf", False)),
+        "subsistemas":   [{"label": s.get("label", s.get("path", "")), "path": s.get("path", "")}
+                           for s in subsystems],
+        "active_subsystem": active_sub.get("label", ""),
+    }
 
 
 @app.get("/tabs/calculo", response_class=HTMLResponse)
@@ -259,6 +385,34 @@ async def get_solute(sistema_id: str):
     return {"atoms": atoms, "box": box}
 
 
+@app.post("/api/sistema/{sistema_id}/subsistema", response_class=JSONResponse)
+async def set_active_subsystem(sistema_id: str, label: str = Form(...)):
+    """
+    Cambia qué subsistema de un grupo se usa para la vista previa 3D
+    (conf-0.gro / solute.xyz). Solo tiene sentido si afecta_conf = true
+    en group.toml — si el grupo lo tiene en false, se rechaza: no hay
+    nada para elegir, siempre se muestra el mismo (el primero).
+    """
+    folder = DATA_PATH / sistema_id
+    group_meta = _load_group(folder)
+    if group_meta is None:
+        raise HTTPException(404, f"'{sistema_id}' no es un grupo (no tiene group.toml).")
+
+    if not group_meta.get("group", {}).get("afecta_conf", False):
+        raise HTTPException(409, "Este grupo tiene afecta_conf=false: la geometría es la misma "
+                                  "para todos los subsistemas, no hay nada que elegir.")
+
+    subsystems = group_meta.get("subsystem", [])
+    if not any(s.get("label") == label for s in subsystems):
+        valid = [s.get("label") for s in subsystems]
+        raise HTTPException(400, f"'{label}' no es un subsistema válido. Opciones: {valid}")
+
+    _active_subsystem_path(folder).write_text(label)
+    has_xyz, active = _ensure_group_xyz(folder, group_meta)
+
+    return {"active_subsystem": active.get("label", ""), "has_xyz": has_xyz}
+
+
 # ---------------------------------------------------------------------------
 # API: programar calculo
 # ---------------------------------------------------------------------------
@@ -281,7 +435,14 @@ def _next_run_dir() -> tuple[int, Path]:
     return n, run_dir
 
 
-def _build_run_toml(n: int, sistema_id: str, data: dict) -> dict:
+def _build_run_toml(n: int, sistema_id: str, modo: str, data: dict) -> dict:
+    """
+    modo: "sistema" | "grupo" — se detecta en schedule_run() mirando si
+    DATA_PATH/sistema_id tiene group.toml o system.toml, no lo elige el
+    usuario. `path` apunta a esa misma carpeta en ambos casos: para
+    "sistema" es la raíz del sistema individual, para "grupo" es la raíz
+    del grupo (el motor la usa para resolver cada subsystem.path adentro).
+    """
     geo = data.get("geometry", "cube")
 
     geometry: dict = {"type": geo}
@@ -311,10 +472,14 @@ def _build_run_toml(n: int, sistema_id: str, data: dict) -> dict:
 
     return {
         "meta": {
-            "run_id":       f"run-{n}",
-            "sistema_id":   sistema_id,
-            "sistema_path": str(DATA_PATH / sistema_id),
-            "created_at":   datetime.now(timezone.utc).isoformat(),
+            "run_id":     f"run-{n}",
+            "sistema_id": sistema_id,
+            "modo":       modo,                            # "sistema" | "grupo"
+            "path":       str(DATA_PATH / sistema_id),      # antes: sistema_path
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "dataset": {
+            "which": data.get("dataset", "real"),           # "real" | "inherent"
         },
         "parametros": {
             "params":          data.get("params", []),
@@ -335,12 +500,21 @@ async def schedule_run(data: dict = Body(...)):
     sistema_id = data.get("sistema_id", "")
     if not sistema_id:
         return JSONResponse({"detail": "sistema_id requerido"}, status_code=400)
-    if not (DATA_PATH / sistema_id).is_dir():
+
+    sistema_dir = DATA_PATH / sistema_id
+    if not sistema_dir.is_dir():
         return JSONResponse({"detail": f"Sistema no encontrado: {sistema_id}"}, status_code=404)
+
+    # modo se detecta acá, no lo manda el frontend: si tiene group.toml es
+    # un grupo, si no, se asume sistema individual (ya se valida que exista
+    # system.toml más abajo, al construir la card en /tabs/sistema — acá no
+    # se duplica esa validación, es responsabilidad del motor C++ según lo
+    # acordado).
+    modo = "grupo" if _load_group(sistema_dir) is not None else "sistema"
 
     n, run_dir = _next_run_dir()
     run_toml   = run_dir / "run.toml"
-    doc        = _build_run_toml(n, sistema_id, data)
+    doc        = _build_run_toml(n, sistema_id, modo, data)
 
     # Escribir status inicial
     status_doc = {
