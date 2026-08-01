@@ -180,29 +180,40 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
 }
 
 // Orquesta sobre cfg.systems (1 elemento en modo sistema individual, N en
-// modo grupo). Por ahora cada sistema escribe su propio archivo: en la raíz
-// de results/ si es un único sistema (idéntico al comportamiento de antes),
-// o bajo results/<label>/ si hay varios (para no pisarse entre sí).
-//
-// TODO (punto 2, writer.cpp): en modo grupo + output_mode=="mean", esto debe
-// reemplazarse por un único CSV combinado con una fila por subsistema
-// (columna 'label') en vez de un archivo por subsistema. Lo que sigue abajo
-// ya es el comportamiento FINAL acordado para output_mode=="time".
+// modo grupo). Dos casos:
+//  - grupo + output_mode=="mean": un único CSV combinado, una fila (o varias,
+//    si es _atoms) por subsistema, con columna 'label' al frente.
+//  - cualquier otro caso (sistema individual, o grupo + "time"): cada sistema
+//    escribe su propio archivo — en la raíz de results/ si es un único
+//    sistema (idéntico al comportamiento de antes), o bajo results/<label>/
+//    si hay varios (para no pisarse entre sí).
 void runCalculation(RunConfig& cfg) {
     const bool grouped= cfg.systems.size() > 1;
     const string base_file_name= cfg.output_mode + (cfg.sph_autocenter ? "_atoms" : "") + ".csv";
     vector<string> written_files;
 
-    for(const ResolvedSystem& rs: cfg.systems) {
-        unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, rs);
-
-        string relative_path= base_file_name;
-        if(grouped) {
-            fs::create_directories(cfg.run_dir / "results" / rs.label);
-            relative_path= rs.label + "/" + base_file_name;
+    if(grouped && cfg.output_mode == "mean") {
+        Writer::OutputMeanGrouped combined;
+        for(const ResolvedSystem& rs: cfg.systems) {
+            unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, rs);
+            auto* row_source= dynamic_cast<Writer::MeanRowSource*>(writer.get());
+            if(!row_source) throw runtime_error("Writer inesperado para output_mode=\"mean\" (esto no debería pasar)");
+            combined.addSubsystem(rs.label, *row_source, cfg);
         }
-        writer->write(relative_path, cfg);
-        written_files.push_back(relative_path);
+        combined.write(base_file_name, cfg);
+        written_files.push_back(base_file_name);
+    } else {
+        for(const ResolvedSystem& rs: cfg.systems) {
+            unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, rs);
+
+            string relative_path= base_file_name;
+            if(grouped) {
+                fs::create_directories(cfg.run_dir / "results" / rs.label);
+                relative_path= rs.label + "/" + base_file_name;
+            }
+            writer->write(relative_path, cfg);
+            written_files.push_back(relative_path);
+        }
     }
 
     writeStatus(cfg.run_dir, "finished", 100.0, 0, cfg.pid, "Completado exitosamente", written_files);

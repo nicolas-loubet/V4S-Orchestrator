@@ -25,6 +25,19 @@ namespace Writer {
         virtual void write(const string& filename, const RunConfig& cfg) const= 0;
     };
 
+    // Interfaz opcional que exponen los outputs de tipo "mean" (Simple y
+    // Atoms), para poder extraer su header/filas SIN escribir a disco. La usa
+    // OutputMeanGrouped para combinar varios subsistemas (modo grupo) en un
+    // único CSV, sin duplicar la lógica de armado de columnas que ya vive en
+    // cada write().
+    class MeanRowSource {
+    public:
+        virtual ~MeanRowSource()= default;
+        virtual vector<string>         meanHeader(const RunConfig& cfg) const= 0;
+        // Una fila (OutputMeanSimple) o varias -una por átomo- (OutputMeanAtoms).
+        virtual vector<vector<string>> meanRows(const RunConfig& cfg) const= 0;
+    };
+
     // 1. Temporal + Global
     class OutputTimeSimple: public Output {
         vector<vector<Real>> data;
@@ -109,7 +122,7 @@ namespace Writer {
     };
 
     // 3. Promedio + Global
-    class OutputMeanSimple: public Output {
+    class OutputMeanSimple: public Output, public MeanRowSource {
         // Media global
         vector<Real> data= vector<Real>(4,0.0);
         int N_wat= 0;
@@ -160,10 +173,9 @@ namespace Writer {
                 sem[i]= sqrt(sq / (n_frames * (n_frames - 1)));
             }
         }
-        
-        void write(const string& filename, const RunConfig& cfg) const override {
-            CSVWriter csvw(cfg.run_dir.string() + "/results/" + filename);
 
+        // --- MeanRowSource ---
+        vector<string> meanHeader(const RunConfig& cfg) const override {
             vector<string> headers;
             for(int iv= 1; iv <= 4; iv++) if(show_ViS[iv-1]) {
                 headers.push_back("V"+to_string(iv)+"S");
@@ -171,8 +183,10 @@ namespace Writer {
                 headers.push_back("V"+to_string(iv)+"S_SEM");
             }
             if(cfg.save_mol_count) headers.push_back("N");
-            csvw.writeHeader(headers);
+            return headers;
+        }
 
+        vector<vector<string>> meanRows(const RunConfig& cfg) const override {
             vector<string> row;
             for(int iv= 1; iv <= 4; iv++) if(show_ViS[iv-1]) {
                 row.push_back(to_string(data[iv-1]));
@@ -180,12 +194,18 @@ namespace Writer {
                 row.push_back(to_string(sem[iv-1]));
             }
             if(cfg.save_mol_count) row.push_back(to_string(N_wat));
-            csvw.writeRow(row);
+            return {row};
+        }
+
+        void write(const string& filename, const RunConfig& cfg) const override {
+            CSVWriter csvw(cfg.run_dir.string() + "/results/" + filename);
+            csvw.writeHeader(meanHeader(cfg));
+            for(const auto& row: meanRows(cfg)) csvw.writeRow(row);
         }
     };
 
     // 4. Promedio + Átomos
-    class OutputMeanAtoms: public Output {
+    class OutputMeanAtoms: public Output, public MeanRowSource {
         // Media global por átomo
         vector<vector<Real>> data;
         vector<int> N_wat;
@@ -251,13 +271,9 @@ namespace Writer {
                 }
             }
         }
-        
-        void write(const string& filename, const RunConfig& cfg) const override {
-            CSVWriter csvw(cfg.run_dir.string() + "/results/" + filename);
 
-            vector<string> atoms= splitNames(cfg.atom_selection);
-            atoms.insert(atoms.begin(), "All");
-
+        // --- MeanRowSource ---
+        vector<string> meanHeader(const RunConfig& cfg) const override {
             vector<string> headers= {"Atom"};
             for(int iv= 1; iv <= 4; iv++) if(show_ViS[iv-1]) {
                 headers.push_back("V"+to_string(iv)+"S");
@@ -265,10 +281,15 @@ namespace Writer {
                 headers.push_back("V"+to_string(iv)+"S_SEM");
             }
             if(cfg.save_mol_count) headers.push_back("N");
-            csvw.writeHeader(headers);
+            return headers;
+        }
 
+        vector<vector<string>> meanRows(const RunConfig& cfg) const override {
+            vector<string> atoms= splitNames(cfg.atom_selection);
+            atoms.insert(atoms.begin(), "All");
+
+            vector<vector<string>> rows;
             for(int ia= 0; ia < (int)atoms.size(); ia++) {
-                cout << ia << "/" << atoms.size() << endl;
                 vector<string> row= {atoms[ia]};
                 for(int iv= 1; iv <= 4; iv++) if(show_ViS[iv-1]) {
                     row.push_back(to_string(data[ia][iv-1]));
@@ -276,8 +297,46 @@ namespace Writer {
                     row.push_back(to_string(sem[ia][iv-1]));
                 }
                 if(cfg.save_mol_count) row.push_back(to_string(N_wat[ia]));
-                csvw.writeRow(row);
+                rows.push_back(move(row));
             }
+            return rows;
+        }
+
+        void write(const string& filename, const RunConfig& cfg) const override {
+            CSVWriter csvw(cfg.run_dir.string() + "/results/" + filename);
+            csvw.writeHeader(meanHeader(cfg));
+            for(const auto& row: meanRows(cfg)) csvw.writeRow(row);
+        }
+    };
+
+    // 5. Combinador de modo grupo (solo aplica a output_mode=="mean"): junta
+    // las filas de N subsistemas (cada uno ya normalizado, vía su
+    // MeanRowSource) en un único CSV, agregando una columna 'label' al
+    // principio de cada fila con el label del subsistema que la aportó.
+    // Con OutputMeanSimple cada subsistema aporta 1 fila; con OutputMeanAtoms
+    // aporta una fila por átomo (todas con el mismo label).
+    class OutputMeanGrouped {
+        vector<string> header;
+        vector<vector<string>> rows;
+        bool header_set= false;
+
+    public:
+        void addSubsystem(const string& label, const MeanRowSource& source, const RunConfig& cfg) {
+            if(!header_set) {
+                header= source.meanHeader(cfg);
+                header.insert(header.begin(), "label");
+                header_set= true;
+            }
+            for(vector<string> row: source.meanRows(cfg)) {
+                row.insert(row.begin(), label);
+                rows.push_back(move(row));
+            }
+        }
+
+        void write(const string& filename, const RunConfig& cfg) const {
+            CSVWriter csvw(cfg.run_dir.string() + "/results/" + filename);
+            csvw.writeHeader(header);
+            for(const auto& row: rows) csvw.writeRow(row);
         }
     };
 }
