@@ -11,12 +11,13 @@ namespace fs= filesystem;
 void writeStatus(const fs::path& dir, const string& state, double progress, int eta_sec, int pid, const string& message, const vector<string>& results= {});
 
 void writeStatusFromTime(const RunConfig& cfg, double& progress, int& eta, int frame_number,
-                         const chrono::time_point<chrono::steady_clock>& start_time, const int num_frames) {
+                         const chrono::time_point<chrono::steady_clock>& start_time, const int num_frames,
+                         const string& label_prefix= "") {
     progress= static_cast<double>(frame_number) / static_cast<double>(num_frames);
     auto elapsed_seconds= chrono::duration_cast<chrono::seconds>(chrono::steady_clock::now() - start_time).count();
     if(elapsed_seconds == 0) return;
     eta= static_cast<int>((static_cast<double>(elapsed_seconds) / frame_number) * (num_frames - frame_number));
-    writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, "Procesando frames "+to_string(frame_number)+"-"+to_string(frame_number+19));
+    writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, label_prefix+"Procesando frames "+to_string(frame_number)+"-"+to_string(frame_number+19));
 }
 
 unique_ptr<Filter::GeometryConstraint> calculateLimits(RunConfig& cfg) {
@@ -104,23 +105,30 @@ string escribirGRO(Vector pos, int res) {
 }
 */
 
-void runCalculation(RunConfig& cfg) {
-    TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology((cfg.sistema_path / "system.top").string());
+// Corre el pipeline completo (topología + filtro + loop de frames) para UN
+// sistema ya resuelto (root de topología + carpeta/prefijo de dataset ya
+// concretos). No escribe a disco: devuelve el Writer normalizado para que el
+// orquestador decida dónde y cómo persistirlo (archivo único, o combinado
+// entre varios sistemas en modo grupo).
+unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const ResolvedSystem& rs) {
+    const string label_prefix= rs.label.empty() ? "" : ("[" + rs.label + "] ");
+
+    TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology((rs.root / "system.top").string());
     CoordinateReader* cr= ReaderFactory::createCoordinateReader(ReaderFactory::ProgramFormat::GROMACS);
 
-    auto files= CoordinateReader::getFileIterator(cfg.sistema_path.string(),"em-*.gro");
+    auto files= CoordinateReader::getFileIterator(rs.dataset_dir.string(), rs.prefix + "*.gro");
     double progress= 0.0; int eta= 0;
     auto start_time= chrono::steady_clock::now();
 
-    writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, "Calculando límites");
+    writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, label_prefix+"Calculando límites");
     unique_ptr<Filter::GeometryConstraint> filter= calculateLimits(cfg);
     bool using_sph_autocenter= (cfg.geometry == "sphere") && cfg.sph_autocenter;
     bool filtering_monolayer= cfg.scope == "monolayer";
 
     vector<string> list_atom_names;
-    
+
     if(cfg.all_mode) {
-        Configuration conf_0(cr, (cfg.sistema_path / files[0].second).string(), ti);
+        Configuration conf_0(cr, (rs.dataset_dir / files[0].second).string(), ti);
         for(int m= 1; m <= ti.num_solutes; m++)
             for(int a= 1; a <= conf_0.getMolec(m).getNAtoms(); a++)
                 list_atom_names.push_back( get<1>(ti.atom_type_name_charge_mass[m-1].at(a)) );
@@ -129,8 +137,8 @@ void runCalculation(RunConfig& cfg) {
         cfg.atom_selection= cfg.atom_selection.substr(0, cfg.atom_selection.size()-1);
     } else if(using_sph_autocenter) list_atom_names= splitNames(cfg.atom_selection);
 
-    writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, "Iniciando primeros frames...");
-    
+    writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, label_prefix+"Iniciando primeros frames...");
+
     unique_ptr<Writer::Output> writer;
     int n_atoms= cfg.sph_autocenter ? list_atom_names.size() : 0;
     int num_frames= files[files.size()-1].first;
@@ -143,9 +151,9 @@ void runCalculation(RunConfig& cfg) {
     }
 
     for(const auto& [frame_number, filename]: files) {
-        if(frame_number % 20 == 0 && frame_number > 0) { writeStatusFromTime(cfg, progress, eta, frame_number, start_time, files[files.size()-1].first); }
+        if(frame_number % 20 == 0 && frame_number > 0) { writeStatusFromTime(cfg, progress, eta, frame_number, start_time, files[files.size()-1].first, label_prefix); }
 
-        Configuration conf(cr, (cfg.sistema_path / filename).string(), ti);
+        Configuration conf(cr, (rs.dataset_dir / filename).string(), ti);
 
         if(using_sph_autocenter) { filter= recalculateCenters(list_atom_names, cfg.sph_radius, ti, conf); }
         vector<bool> filtered_monolayer(conf.getNMolec(), false);
@@ -168,7 +176,34 @@ void runCalculation(RunConfig& cfg) {
     }
 
     writer->normalize(cfg);
-    const string file_name= cfg.output_mode + (cfg.sph_autocenter ? "_atoms" : "") + ".csv";
-    writer->write(file_name, cfg);
-    writeStatus(cfg.run_dir, "finished", 100.0, 0, cfg.pid, "Completado exitosamente", {file_name});
+    return writer;
+}
+
+// Orquesta sobre cfg.systems (1 elemento en modo sistema individual, N en
+// modo grupo). Por ahora cada sistema escribe su propio archivo: en la raíz
+// de results/ si es un único sistema (idéntico al comportamiento de antes),
+// o bajo results/<label>/ si hay varios (para no pisarse entre sí).
+//
+// TODO (punto 2, writer.cpp): en modo grupo + output_mode=="mean", esto debe
+// reemplazarse por un único CSV combinado con una fila por subsistema
+// (columna 'label') en vez de un archivo por subsistema. Lo que sigue abajo
+// ya es el comportamiento FINAL acordado para output_mode=="time".
+void runCalculation(RunConfig& cfg) {
+    const bool grouped= cfg.systems.size() > 1;
+    const string base_file_name= cfg.output_mode + (cfg.sph_autocenter ? "_atoms" : "") + ".csv";
+    vector<string> written_files;
+
+    for(const ResolvedSystem& rs: cfg.systems) {
+        unique_ptr<Writer::Output> writer= runCalculationForSystem(cfg, rs);
+
+        string relative_path= base_file_name;
+        if(grouped) {
+            fs::create_directories(cfg.run_dir / "results" / rs.label);
+            relative_path= rs.label + "/" + base_file_name;
+        }
+        writer->write(relative_path, cfg);
+        written_files.push_back(relative_path);
+    }
+
+    writeStatus(cfg.run_dir, "finished", 100.0, 0, cfg.pid, "Completado exitosamente", written_files);
 }
