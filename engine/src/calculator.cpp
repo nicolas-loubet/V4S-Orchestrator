@@ -111,6 +111,26 @@ string escribirGRO(Vector pos, int res) {
 }
 */
 
+// La librería externa, si no encuentra el .top en la ruta dada, no tira
+// excepción: imprime "Topology not found" y sigue con un TopolInfo vacío,
+// que después explota más abajo con un críptico "map::at" al indexar datos
+// que nunca se cargaron. Por eso acá chequeamos existencia ANTES de
+// llamarla, y fallamos con mensaje claro si no aparece.
+//
+// system.top vive junto al dataset, no junto a system.toml: se busca primero
+// DENTRO de la carpeta de confs (dataset_dir), y si no está ahí, en su
+// carpeta contenedora (ej. "estabilizacion/", un nivel arriba de "confs/").
+static fs::path resolveTopologyPath(const fs::path& dataset_dir) {
+    fs::path inside_dataset= dataset_dir / "system.top";
+    if(fs::exists(inside_dataset)) return inside_dataset;
+
+    fs::path containing_dir= dataset_dir.parent_path() / "system.top";
+    if(fs::exists(containing_dir)) return containing_dir;
+
+    throw runtime_error("No se encontró system.top ni en '" + inside_dataset.string() +
+                         "' ni en la carpeta contenedora '" + containing_dir.string() + "'");
+}
+
 // Un sistema resuelto junto con la lista de frames ya globbeada. Se
 // precomputa una sola vez en el orquestador (runCalculation) para no
 // re-globbear adentro de runCalculationForSystem, y para poder conocer de
@@ -131,7 +151,7 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
                                                     int frame_offset, int total_frames) {
     const string label_prefix= rs.label.empty() ? "" : ("[" + rs.label + "] ");
 
-    TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology((rs.root / "system.top").string());
+    TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology(resolveTopologyPath(rs.dataset_dir).string());
     CoordinateReader* cr= ReaderFactory::createCoordinateReader(ReaderFactory::ProgramFormat::GROMACS);
 
     double progress= 0.0; int eta= 0;

@@ -292,12 +292,31 @@ struct ResolvedSystem {
     std::string prefix;      // dataset.prefix
 };
 
+// system.toml puede estar en 'path' directo, o -si 'path' quedó apuntando
+// un nivel de más (ej. a la carpeta de estabilización en vez de a la raíz
+// del sistema)- un nivel arriba de 'path'. Devuelve la ruta real encontrada;
+// el CALLER debe usar su .parent_path() como raíz real del sistema (que
+// puede no ser exactamente 'path').
+static fs::path resolveSystemTomlPath(const fs::path& path) {
+    fs::path direct= path / "system.toml";
+    if(fs::exists(direct)) return direct;
+
+    fs::path one_up= path.parent_path() / "system.toml";
+    if(fs::exists(one_up)) return one_up;
+
+    throw std::runtime_error("No se encontró system.toml ni en '" + direct.string() +
+                              "' ni un nivel arriba en '" + one_up.string() + "'");
+}
+
 // Valida el dataset elegido contra el system.toml de un sistema puntual y,
 // si es válido, arma su ResolvedSystem. Corta duro (excepción) si el dataset
 // pedido no está disponible — es la validación acordada como responsabilidad
 // del motor, no de Python.
-static ResolvedSystem resolveOne(const fs::path& root, const std::string& dataset_which, const std::string& label= "") {
-    SystemInfo si= parseSystemToml(root / "system.toml");
+static ResolvedSystem resolveOne(const fs::path& path, const std::string& dataset_which, const std::string& label= "") {
+    fs::path system_toml_path= resolveSystemTomlPath(path);
+    fs::path root= system_toml_path.parent_path(); // raíz real -- puede diferir de 'path' si hubo fallback
+
+    SystemInfo si= parseSystemToml(system_toml_path);
 
     const DatasetInfo* ds= nullptr;
     if(dataset_which == "real")           ds= &si.dataset_real;
