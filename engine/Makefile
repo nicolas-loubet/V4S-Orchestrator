@@ -1,5 +1,5 @@
 CXX      = g++
-CXXFLAGS = -std=c++17 -O3
+CXXFLAGS = -std=c++17 -O3 -DDIFF_RESID_MOLECULE
 TARGET   = build/v4s
 SRC      = src/main.cpp
 
