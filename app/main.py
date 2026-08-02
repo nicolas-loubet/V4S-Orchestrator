@@ -470,12 +470,20 @@ def _build_run_toml(n: int, sistema_id: str, modo: str, data: dict) -> dict:
             "autocenter": data.get("sph_autocenter", False),
         })
 
+    # path: en modo "sistema" apunta directo a estabilizacion/, que es
+    # donde vive system.top (el motor lo busca ahí, no en la raíz). En
+    # modo "grupo" sigue apuntando a la raíz del grupo — no hay un único
+    # system.top ahí, cada subsistema tiene el suyo dentro de su propia
+    # estabilizacion/, y eso lo resuelve el motor al leer group.toml.
+    sistema_root = DATA_PATH / sistema_id
+    run_path = (sistema_root / "estabilizacion") if modo == "sistema" else sistema_root
+
     return {
         "meta": {
             "run_id":     f"run-{n}",
             "sistema_id": sistema_id,
             "modo":       modo,                            # "sistema" | "grupo"
-            "path":       str(DATA_PATH / sistema_id),      # antes: sistema_path
+            "path":       str(run_path),
             "created_at": datetime.now(timezone.utc).isoformat(),
         },
         "dataset": {
