@@ -1,6 +1,6 @@
 # V4S-Orchestrator
 
-Versión actual: 1.3.6
+Versión actual: 1.2.0
 
 V4S-Orchestrator es un sistema de orquestación local diseñado para automatizar el flujo de trabajo de simulaciones en GROMACS y el cálculo del índice de orden estructural mediante binarios de C++.
 
@@ -22,15 +22,34 @@ El sistema opera bajo una arquitectura de dos capas para una ejecución local ef
 ```text
 .                                  # Nivel de Infraestructura
 ├── data/                          # Datos de GROMACS y resultados
+│   ├── queue/                     # jobs encolados (JSON) — a nivel de data/, no por sistema
+│   └── <sistema>/                 # una carpeta por corrida o grupo
+│       ├── system.toml            # metadata + datasets (real/inherente) — sistema individual
+│       ├── group.toml             # alternativa a system.toml — agrupa varios subsistemas (a mano)
+│       ├── solute.xyz             # vista previa 3D, generada automáticamente
+│       ├── estabilizacion/        # EM, equilibración, producción (.gro/.top/.mdp/.log/.xtc)
+│       │   └── confs/             # conf-N.gro — trayectoria separada en frames (trjconv -sep)
+│       └── confs_min/             # opcional — em-N.gro minimizados + summary.csv
 └── V4S-Orchestrator/              # Repositorio Git
     ├── app/
     │   ├── __init__.py
-    │   ├── main.py                # Backend FastAPI
+    │   ├── main.py                 # Backend FastAPI: tabs, sistemas/grupos, scheduling de cálculo
+    │   ├── pipeline.py             # Genera el run.sh de cada dinámica GROMACS (por etapas)
+    │   ├── queue_worker.py         # Cola de jobs + worker en background (screen + gmx_gpu)
+    │   ├── routes_launch.py        # Router /api/launch/*
+    │   ├── routes_queue.py         # Router /api/queue/*
+    │   ├── static/
+    │   │   ├── scripts/            # utilitarios (fix_pbc_solvent_conf.py, adapt_legacy_system.py, ...)
+    │   │   ├── solvents/           # .gro de modelos de agua
+    │   │   └── water_topologies/   # .itp + atomtypes.toml de modelos de agua
     │   └── templates/
     │       ├── base.html
     │       ├── dashboard.html
-    │       └── components/        # Vistas modulares para HTMX
-    ├── static/                    # Archivos CSS/JS
+    │       └── components/         # tab_sistema.html, tab_lanzar.html, tab_calculo.html, tab_visualizacion.html
+    ├── engine/                     # Motor C++ (cálculo del índice V1S–V4S)
+    │   ├── src/
+    │   └── build/
+    ├── static/                     # Favicon, estáticos globales
     ├── requirements.txt
     └── README.md
 ```
@@ -39,11 +58,12 @@ El sistema opera bajo una arquitectura de dos capas para una ejecución local ef
 
 ## Flujo de Trabajo en la Interfaz
 
-El dashboard está dividido en tres secciones modulares:
+El dashboard está dividido en cuatro pestañas:
 
-- Elegir Sistema: Selección de archivos de estructura y topología (.gro / .top) disponibles en la carpeta local de datos.
-- Configurar Cálculo: Formulario dinámico para parametrizar el índice estructural (V1S a V4S / omega_m), geometría del cálculo y temporalidad.
-- Visualización: Generación de gráficos interactivos mediante Plotly a partir de los archivos .csv procesados localmente.
+- Elegir Sistema: selección de un sistema (o grupo de subsistemas) ya simulado y disponible en `data/`, como punto de partida para calcular el índice estructural. También permite ver la cola de corridas en curso.
+- Lanzar: formulario para lanzar una dinámica GROMACS nueva desde cero (subida de `.gro`/`.top`, modelo de agua, minimización, equilibración, producción, y opcionalmente minimización de confs post-producción).
+- Configurar Cálculo: formulario dinámico para parametrizar el índice estructural (V1S a V4S / omega_m), geometría del cálculo, dataset (real o inherente) y temporalidad.
+- Visualización: generación de gráficos interactivos mediante Plotly a partir de los archivos .csv procesados localmente.
 
 ---
 
@@ -80,6 +100,17 @@ scheduled-runs/run-N/
 ├── status.toml    # progreso y estado (escrito por el C++)
 └── results/       # archivos CSV de salida
 ```
+
+---
+
+## Datasets y sistemas agrupados (nuevo)
+
+El sistema ahora distingue dos ejes de configuración adicionales al armar un cálculo:
+
+- **Dataset real vs. inherente**: además de la trayectoria de producción cruda ("real"), un sistema puede tener estructuras minimizadas por-frame ("inherente" — cada conf llevado a su mínimo local, filtrando el ruido térmico). Se elige con `[dataset].which = "real" | "inherent"` en `run.toml`; disponibilidad y rutas se declaran en `system.toml` (`[dataset.real]` / `[dataset.inherent]`).
+- **Sistemas agrupados**: un estudio con una variable (réplicas, barrido de un parámetro — ej. nanotubos de distinto tamaño) puede armarse a mano como un grupo: una carpeta con `group.toml` que lista subsistemas, cada uno con su propio `system.toml` normal. Se identifica con `[meta].modo = "grupo"` en `run.toml`.
+
+El formato de salida resultante para cada caso todavía se está terminando de definir del lado del motor C++.
 
 ---
 
