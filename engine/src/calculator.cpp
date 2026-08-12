@@ -192,17 +192,70 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
             writeStatusFromTime(cfg, progress, eta, frame_number, frame_offset, total_frames, start_time, label_prefix);
         }
 
-        Configuration conf(cr, (rs.dataset_dir / filename).string(), ti);
+        const fs::path frame_path= rs.dataset_dir / filename;
 
-        if(using_sph_autocenter) { filter= recalculateCenters(list_atom_names, cfg.sph_radius, ti, conf); }
+        // Cada llamada a la librería externa queda en su propio try/catch,
+        // con un mensaje distinto según la etapa. Así, si algo falla (por
+        // ejemplo por un mismatch entre topología y frame), sabemos EXACTO
+        // en qué paso pasó -leyendo el .gro, calculando monolayer, aplicando
+        // el filtro geométrico, o calculando interacciones- sin necesitar
+        // gdb ni reproducir a mano.
+        unique_ptr<Configuration> conf_ptr;
+        try {
+            writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid,
+                        label_prefix+"Frame "+to_string(frame_number)+": leyendo "+filename+"...");
+            conf_ptr= make_unique<Configuration>(cr, frame_path.string(), ti);
+        } catch(const exception& e) {
+            throw runtime_error(label_prefix + "Fallo LEYENDO frame " + to_string(frame_number) +
+                                 " (" + frame_path.string() + "): " + e.what());
+        }
+        Configuration& conf= *conf_ptr;
+
+        if(using_sph_autocenter) {
+            try {
+                filter= recalculateCenters(list_atom_names, cfg.sph_radius, ti, conf);
+            } catch(const exception& e) {
+                throw runtime_error(label_prefix + "Fallo RECALCULANDO CENTROS en frame " + to_string(frame_number) + ": " + e.what());
+            }
+        }
+
         vector<bool> filtered_monolayer(conf.getNMolec(), false);
-        if(filtering_monolayer) { findMonolayer(conf, ti.num_solutes, filtered_monolayer); };
+        if(filtering_monolayer) {
+            try {
+                writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid,
+                            label_prefix+"Frame "+to_string(frame_number)+": calculando monolayer ("+
+                            to_string(conf.getNMolec())+" moleculas totales)...");
+                findMonolayer(conf, ti.num_solutes, filtered_monolayer);
+            } catch(const exception& e) {
+                throw runtime_error(label_prefix + "Fallo calculando MONOLAYER en frame " + to_string(frame_number) +
+                                     " (num_solutes=" + to_string(ti.num_solutes) + ", nMolec=" + to_string(conf.getNMolec()) + "): " + e.what());
+            }
+        }
+
+        writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid,
+                    label_prefix+"Frame "+to_string(frame_number)+": calculando interacciones ("+
+                    to_string(conf.getNMolec()-ti.num_solutes)+" moleculas a evaluar)...");
 
         for(int m= ti.num_solutes+1; m <= conf.getNMolec(); m++) {
             if(filtering_monolayer && !filtered_monolayer[m-1]) continue;
-            int res= filter->isInside(conf.getMolec(m).getPosition(), conf.getBounds());
+
+            int res;
+            try {
+                res= filter->isInside(conf.getMolec(m).getPosition(), conf.getBounds());
+            } catch(const exception& e) {
+                throw runtime_error(label_prefix + "Fallo en FILTRO GEOMÉTRICO, frame " + to_string(frame_number) +
+                                     " molécula " + to_string(m) + ": " + e.what());
+            }
             if(res == 0) continue;
-            vector<Real> vis= conf.getInteractionsPerSite(m);
+
+            vector<Real> vis;
+            try {
+                vis= conf.getInteractionsPerSite(m);
+            } catch(const exception& e) {
+                throw runtime_error(label_prefix + "Fallo en getInteractionsPerSite, frame " + to_string(frame_number) +
+                                     " molécula " + to_string(m) + " (de " + to_string(conf.getNMolec()) +
+                                     ", num_solutes=" + to_string(ti.num_solutes) + "): " + e.what());
+            }
 
             if(using_sph_autocenter) {
                 //vector<int> list_i_sph= extractListFromInt(res, filter->getN());
