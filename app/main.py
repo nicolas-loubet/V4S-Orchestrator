@@ -591,6 +591,8 @@ async def get_run_meta(n: int):
     save_n      = doc.get("parametros", {}).get("save_mol_count", False)
     atom_sel    = doc.get("agregacion", {}).get("atom_selection", "")
     atoms       = [a.strip() for a in atom_sel.split() if a.strip()] if atom_sel else []
+    modo        = doc.get("meta", {}).get("modo", "sistema")
+    sistema_id  = doc.get("meta", {}).get("sistema_id", "")
 
     # Determinar tipo de output
     is_atoms = (scope == "selection" and len(atoms) > 0)
@@ -603,15 +605,31 @@ async def get_run_meta(n: int):
     else:
         output_type = "time_atoms"
 
-    # Leer DT desde system.toml del sistema asociado
-    dt = 0.0
-    sistema_id = doc.get("meta", {}).get("sistema_id", "")
+    # Leer DT e info de subsistemas según el modo
+    dt          = 0.0
+    subsistemas = []
+
     if sistema_id:
-        sys_toml = DATA_PATH / sistema_id / "system.toml"
-        if sys_toml.exists():
-            with open(sys_toml, "rb") as f:
-                sys_doc = tomllib.load(f)
-            dt = sys_doc.get("simulation", {}).get("snapshot_interval_ps", 0.0)
+        sistema_dir = DATA_PATH / sistema_id
+        if modo == "grupo":
+            group_meta = _load_group(sistema_dir)
+            if group_meta:
+                subs = group_meta.get("subsystem", [])
+                subsistemas = [
+                    {"label": s.get("label", ""), "path": s.get("path", "")}
+                    for s in subs
+                ]
+                # dt desde el primer subsistema (son iguales en todos por diseño)
+                if subs:
+                    first_sys = sistema_dir / subs[0].get("path", "") / "system.toml"
+                    if first_sys.exists():
+                        with open(first_sys, "rb") as f:
+                            dt = tomllib.load(f).get("simulation", {}).get("snapshot_interval_ps", 0.0)
+        else:
+            sys_toml = sistema_dir / "system.toml"
+            if sys_toml.exists():
+                with open(sys_toml, "rb") as f:
+                    dt = tomllib.load(f).get("simulation", {}).get("snapshot_interval_ps", 0.0)
 
     return {
         "output_type": output_type,
@@ -622,6 +640,8 @@ async def get_run_meta(n: int):
         "scope":       scope,
         "dt":          dt,
         "sistema_id":  sistema_id,
+        "modo":        modo,
+        "subsistemas": subsistemas,   # [] si es sistema individual
     }
 
 
@@ -642,20 +662,34 @@ async def get_run_results(n: int):
     results_dir = run_dir / "results"
     if not results_dir.exists():
         return JSONResponse({"detail": "Run no encontrado"}, status_code=404)
-    files = [f.name for f in sorted(results_dir.glob("*.csv"))]
+    # rglob en vez de glob: detecta CSVs en subcarpetas (ej. results/N40/mean.csv
+    # que genera el motor en modo grupo). Los paths se devuelven relativos a
+    # results/, así el frontend puede usarlos directamente como {fname} en /csv/.
+    files = [
+        str(f.relative_to(results_dir))
+        for f in sorted(results_dir.rglob("*.csv"))
+    ]
     return {"files": files}
 
 
-@app.get("/api/run/{n}/csv/{filename}", response_class=JSONResponse)
+@app.get("/api/run/{n}/csv/{filename:path}", response_class=JSONResponse)
 async def get_run_csv(n: int, filename: str):
     import csv
-    run_dir  = RUNS_DIR / f"run-{n}"
-    # Buscar con y sin prefijo results/
-    csv_path = run_dir / "results" / filename
+    run_dir     = RUNS_DIR / f"run-{n}"
+    results_dir = run_dir / "results"
+
+    # Resolver la ruta y validar que siga siendo hija de results/ (anti path-traversal)
+    csv_path = (results_dir / filename).resolve()
+    if not str(csv_path).startswith(str(results_dir.resolve())):
+        return JSONResponse({"detail": "Ruta no permitida"}, status_code=400)
+    # Fallback: buscar también en la raíz del run (compatibilidad hacia atrás)
     if not csv_path.exists():
-        csv_path = run_dir / filename
+        csv_path = (run_dir / filename).resolve()
+        if not str(csv_path).startswith(str(run_dir.resolve())):
+            return JSONResponse({"detail": "Ruta no permitida"}, status_code=400)
     if not csv_path.exists() or csv_path.suffix != ".csv":
         return JSONResponse({"detail": "Archivo no encontrado"}, status_code=404)
+
     rows = []
     with open(csv_path, newline="") as f:
         reader = csv.DictReader(f)

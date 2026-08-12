@@ -199,6 +199,118 @@
                         </button>
                     </div>
 
+                    <!-- mean_*: modo grupo — plot en función de 'label' -->
+                    <div id="sm-mean-group-controls" class="hidden space-y-4">
+
+                        <div class="space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Parámetro</label>
+                            <select id="mg-param-select"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                            </select>
+                        </div>
+
+                        <!-- "Varios": una curva por parámetro, con color editable -->
+                        <div id="mg-multi-params" class="hidden space-y-2">
+                            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">Parámetros a graficar</p>
+                            <div id="mg-multi-params-list" class="space-y-2"></div>
+                        </div>
+
+                        <div id="mg-atom-row" class="hidden space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Átomo</label>
+                            <select id="mg-atom-select"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                            </select>
+                        </div>
+
+                        <div class="space-y-2">
+                            <p class="font-mono text-xs text-slate-500 uppercase tracking-widest">Tipo de media</p>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="mg-mean-type" value="simple" checked
+                                           class="w-3.5 h-3.5 accent-sky-400 cursor-pointer" />
+                                    <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Media de valores</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer group">
+                                    <input type="radio" name="mg-mean-type" value="fmean"
+                                           class="w-3.5 h-3.5 accent-sky-400 cursor-pointer" />
+                                    <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Media por frames</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <input type="checkbox" id="mg-show-errors" checked
+                                   class="w-4 h-4 rounded accent-sky-400 cursor-pointer" />
+                            <span class="font-mono text-xs text-slate-300 group-hover:text-accent transition-colors">Mostrar barras de error</span>
+                        </label>
+
+                        <p class="font-mono text-xs text-slate-600">
+                            Se detecta solo: línea/errorbar si los labels de los subsistemas son numéricos, barras si son categóricos.
+                        </p>
+
+                        <button onclick="window.viz.runSimplePlot()"
+                                class="w-full font-mono text-xs py-2 rounded-md
+                                       bg-accent/10 border border-accent/40 text-accent
+                                       hover:bg-accent/20 transition-all duration-150">
+                            Graficar
+                        </button>
+                    </div>
+
+                    <!-- time_*: modo grupo — comparar sistemas / átomos -->
+                    <div id="sm-time-group-controls" class="hidden space-y-4">
+
+                        <div class="space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Parámetro</label>
+                            <select id="tg-param-select"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                            </select>
+                        </div>
+
+                        <!-- Solo aplica a time_atoms: hay que elegir qué dimensión queda fija -->
+                        <div id="tg-fixed-dim-row" class="hidden space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Mantener fijo</label>
+                            <select id="tg-fixed-dim"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                                <option value="atom">Átomo</option>
+                                <option value="system">Sistema</option>
+                            </select>
+                        </div>
+
+                        <div id="tg-fixed-value-row" class="hidden space-y-1.5">
+                            <label id="tg-fixed-value-label" class="font-mono text-xs text-slate-500 uppercase tracking-widest">Valor</label>
+                            <select id="tg-fixed-value"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                            </select>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <label id="tg-compare-label" class="font-mono text-xs text-slate-500 uppercase tracking-widest">Comparar por Sistema</label>
+                            <select id="tg-compare-value"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                                <option value="__all__">Todos</option>
+                            </select>
+                        </div>
+
+                        <button onclick="window.viz.runSimplePlot()"
+                                class="w-full font-mono text-xs py-2 rounded-md
+                                       bg-accent/10 border border-accent/40 text-accent
+                                       hover:bg-accent/20 transition-all duration-150">
+                            Graficar
+                        </button>
+                    </div>
+
                     <!-- Estado vacío -->
                     <div id="sm-empty"
                          class="rounded-lg border border-dashed border-border-dim bg-surface-800/40
@@ -553,40 +665,66 @@
             opt.value = fname; opt.textContent = fname.replace(/^results\//, '');
             sel.appendChild(opt);
         });
-        if (files.length === 1) {
-            sel.value = files[0];
-            await onCSVSelect(files[0]);
-        }
 
         document.getElementById('viz-panel').classList.remove('hidden');
 
         // Cargar meta del run para configurar el modo simple
         try {
             const mr = await fetch(`/api/run/${currentRunN}/meta`);
-            if (mr.ok) {
-                runMeta = await mr.json();
-                // Agregar columna time a CSVs de serie temporal
-                if (runMeta.output_type === 'time_simple' || runMeta.output_type === 'time_atoms') {
-                    addTimeColumn(runMeta.dt || 0);
-                }
-                configureSimpleMode(runMeta, files);
-                if (runMeta.output_type === 'mean_atoms') configureColor3DPanel(runMeta, Object.keys(loadedCSVs)[0]);
-                // Actualizar placeholder del editor con ejemplo relevante
-                if (window._cmEditor) {
-                    const ph = getPlaceholder(runMeta);
-                    const cur = window._cmEditor.state.doc.toString();
-                    // Solo reemplazar si el usuario no modificó el placeholder
-                    if (!cur.trim() || cur === PLACEHOLDER || cur === getPlaceholder(null)) {
-                        const { EditorState } = await import('https://esm.sh/@codemirror/state@6');
-                        window._cmEditor.setState(window._cmEditor.state);
-                        const tr = window._cmEditor.state.update({
-                            changes: { from: 0, to: window._cmEditor.state.doc.length, insert: ph }
-                        });
-                        window._cmEditor.dispatch(tr);
-                    }
+            if (!mr.ok) return;
+            runMeta = await mr.json();
+
+            const grouped = runMeta.modo === 'grupo';
+            const isTime  = runMeta.output_type === 'time_simple' || runMeta.output_type === 'time_atoms';
+
+            if (grouped && isTime) {
+                // time + grupo: un CSV por subsistema, ninguno trae columna
+                // 'label' (a diferencia del combinado de mean) -- se la
+                // agregamos acá antes de armar el dataset combinado.
+                await preloadGroupTimeCSVs(files);
+                if (runMeta.dt) addTimeColumn(runMeta.dt);
+                loadedCSVs['__group_time__'] = files.flatMap(f => loadedCSVs[f.replace(/^results\//, '')] || []);
+            } else if (files.length === 1) {
+                sel.value = files[0];
+                await onCSVSelect(files[0]);
+                if (isTime) addTimeColumn(runMeta.dt || 0);
+            }
+            // si no: multi-archivo sin grupo -- comportamiento de siempre, el usuario elige del selector
+
+            configureSimpleMode(runMeta, files);
+            if (runMeta.output_type === 'mean_atoms' && !grouped) configureColor3DPanel(runMeta, Object.keys(loadedCSVs)[0]);
+            // Actualizar placeholder del editor con ejemplo relevante
+            if (window._cmEditor) {
+                const ph = getPlaceholder(runMeta);
+                const cur = window._cmEditor.state.doc.toString();
+                // Solo reemplazar si el usuario no modificó el placeholder
+                if (!cur.trim() || cur === PLACEHOLDER || cur === getPlaceholder(null)) {
+                    const { EditorState } = await import('https://esm.sh/@codemirror/state@6');
+                    window._cmEditor.setState(window._cmEditor.state);
+                    const tr = window._cmEditor.state.update({
+                        changes: { from: 0, to: window._cmEditor.state.doc.length, insert: ph }
+                    });
+                    window._cmEditor.dispatch(tr);
                 }
             }
         } catch (_) {}
+    }
+
+    // Precarga en loadedCSVs todos los archivos de un run en grupo (uno por
+    // subsistema), taggeando cada fila con 'label' = subsistema de origen
+    // (derivado del prefijo de carpeta del path, ej. "N40/time_simple.csv").
+    async function preloadGroupTimeCSVs(files) {
+        for (const fname of files) {
+            const bare = fname.replace(/^results\//, '');
+            if (loadedCSVs[bare]) continue;
+            try {
+                const r = await fetch(`/api/run/${currentRunN}/csv/${encodeURIComponent(bare)}`);
+                if (!r.ok) continue;
+                const rows  = (await r.json()).rows;
+                const label = bare.includes('/') ? bare.split('/')[0] : bare;
+                loadedCSVs[bare] = rows.map(row => ({ ...row, label }));
+            } catch (_) {}
+        }
     }
 
     // --------------------------------------------------------
@@ -611,8 +749,21 @@
         document.getElementById('sm-mean-simple').classList.add('hidden');
         document.getElementById('sm-mean-atoms-controls').classList.add('hidden');
         document.getElementById('sm-plot-controls').classList.add('hidden');
+        document.getElementById('sm-mean-group-controls').classList.add('hidden');
+        document.getElementById('sm-time-group-controls').classList.add('hidden');
 
-        if (meta.output_type === 'mean_simple') {
+        const grouped = meta.modo === 'grupo';
+        const isMean  = meta.output_type === 'mean_simple' || meta.output_type === 'mean_atoms';
+
+        // El selector genérico de archivo no tiene sentido en modo grupo: la
+        // selección de subsistema/átomo la manejan los paneles de grupo de
+        // abajo (en modo avanzado se vuelve a mostrar, ver toggleDevMode).
+        document.getElementById('csv-select-container').classList.toggle('hidden', grouped);
+
+        if (grouped) {
+            if (isMean) buildMeanGroupControls(meta);
+            else        buildTimeGroupControls(meta);
+        } else if (meta.output_type === 'mean_simple') {
             buildMeanSimpleTable(meta);
         } else {
             buildPlotControls(meta);
@@ -689,6 +840,257 @@
         document.getElementById('sm-plot-controls').classList.remove('hidden');
     }
 
+    // ----------------------------------------------------------------
+    // MODO GRUPO — mean_* (plot en función de 'label')
+    // ----------------------------------------------------------------
+    function buildMeanGroupControls(meta) {
+        const csvKey = Object.keys(loadedCSVs)[0];
+        const rows   = csvKey ? loadedCSVs[csvKey] : [];
+        const cols   = rows[0] ? Object.keys(rows[0]) : [];
+        const params = (meta.params || []).filter(p => cols.includes(p));
+        const numericAxis = labelsAreNumeric(rows.map(r => r['label']));
+
+        const paramSel = document.getElementById('mg-param-select');
+        paramSel.innerHTML = '';
+        params.forEach(p => paramSel.appendChild(new Option(p, p)));
+        // "Varios" solo tiene sentido con eje numérico (línea/errorbar) y
+        // más de un parámetro para comparar -- con barras categóricas o un
+        // solo parámetro no aporta nada.
+        if (numericAxis && params.length > 1) {
+            paramSel.appendChild(new Option('Varios', '__multi__'));
+        }
+        paramSel.onchange = () => updateMultiParamsVisibility(params);
+        updateMultiParamsVisibility(params);
+
+        const isAtoms = meta.output_type === 'mean_atoms';
+        document.getElementById('mg-atom-row').classList.toggle('hidden', !isAtoms);
+        if (isAtoms && csvKey) {
+            const atoms   = [...new Set(loadedCSVs[csvKey].map(r => r['Atom']))];
+            const atomSel = document.getElementById('mg-atom-select');
+            atomSel.innerHTML = '';
+            atoms.forEach(a => atomSel.appendChild(new Option(a, a)));
+        }
+
+        document.getElementById('sm-mean-group-controls').classList.remove('hidden');
+    }
+
+    const DEFAULT_MULTI_COLORS = ['#38bdf8', '#34d399', '#f59e0b', '#f87171'];
+
+    function updateMultiParamsVisibility(params) {
+        const isMulti = document.getElementById('mg-param-select').value === '__multi__';
+        document.getElementById('mg-multi-params').classList.toggle('hidden', !isMulti);
+        if (isMulti) buildMultiParamsList(params);
+    }
+
+    function buildMultiParamsList(params) {
+        const list = document.getElementById('mg-multi-params-list');
+        // No reconstruir si ya está armada para este mismo set de parámetros
+        // -- así no se pierden los colores/checks elegidos al ir y volver.
+        if (list.dataset.builtFor === params.join(',')) return;
+        list.dataset.builtFor = params.join(',');
+        list.innerHTML = '';
+
+        params.forEach((p, i) => {
+            const color = DEFAULT_MULTI_COLORS[i % DEFAULT_MULTI_COLORS.length];
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-3';
+            row.dataset.param = p;
+            row.innerHTML =
+                '<input type="checkbox" checked class="mg-multi-check w-4 h-4 rounded accent-sky-400 cursor-pointer" />' +
+                '<span class="font-mono text-xs text-slate-300 flex-1 mg-multi-label">' + p + '</span>' +
+                '<input type="color" value="' + color + '" class="mg-multi-color w-9 h-7 rounded border border-border-dim bg-surface-600 cursor-pointer" />';
+
+            const check      = row.querySelector('.mg-multi-check');
+            const label       = row.querySelector('.mg-multi-label');
+            const colorInput = row.querySelector('.mg-multi-color');
+            check.addEventListener('change', () => {
+                label.classList.toggle('opacity-30', !check.checked);
+                colorInput.classList.toggle('opacity-30', !check.checked);
+                colorInput.disabled = !check.checked;
+            });
+            list.appendChild(row);
+        });
+    }
+
+    // true si TODOS los labels son parseables como número -> conviene
+    // graficar como línea/errorbar en vez de barras categóricas.
+    function labelsAreNumeric(labels) {
+        return labels.length > 0 && labels.every(l => l !== '' && l !== null && !isNaN(parseFloat(l)) && isFinite(l));
+    }
+
+    function buildMeanGroupCode(csvKey) {
+        const paramVal = document.getElementById('mg-param-select')?.value || 'V1S';
+        if (paramVal === '__multi__') return buildMeanGroupMultiCode(csvKey);
+
+        const param    = paramVal;
+        const atomRow  = document.getElementById('mg-atom-row');
+        const isAtoms  = atomRow && !atomRow.classList.contains('hidden');
+        const atom     = document.getElementById('mg-atom-select')?.value || '';
+        const meanType = document.querySelector('input[name="mg-mean-type"]:checked')?.value || 'simple';
+        const showErr  = document.getElementById('mg-show-errors')?.checked ?? true;
+        const yCol     = meanType === 'fmean' ? param + '_fMean' : param;
+        const errCol   = param + '_SEM';
+
+        const rows        = loadedCSVs[csvKey] || [];
+        const filtered    = isAtoms ? rows.filter(r => r['Atom'] === atom) : rows;
+        const numericAxis = labelsAreNumeric(filtered.map(r => r['label']));
+
+        const L = [];
+        L.push("df = data['" + csvKey + "'].copy()");
+        if (isAtoms) L.push("df = df[df['Atom'] == '" + atom + "']");
+        if (numericAxis) {
+            L.push("df['label'] = df['label'].astype(float)");
+            L.push("df = df.sort_values('label')");
+        }
+        L.push("y = df['" + yCol + "']");
+        L.push(showErr ? "yerr = df['" + errCol + "'] if '" + errCol + "' in df.columns else None"
+                        : "yerr = None");
+        if (numericAxis) {
+            L.push("plt.errorbar(df['label'], y, yerr=yerr, color='#38bdf8', marker='o', capsize=4)");
+            L.push("plt.xlabel('label')");
+        } else {
+            L.push("x = range(len(df))");
+            L.push("plt.bar(x, y, yerr=yerr, color='#4f86c6', capsize=5, error_kw=dict(ecolor='#94a3b8', lw=1.2))");
+            L.push("plt.xticks(list(x), df['label'].astype(str).tolist(), rotation=45, ha='right')");
+        }
+        L.push("plt.ylabel('" + yCol + "')");
+        L.push("plt.grid(True, axis='y', alpha=0.3)");
+        L.push("plt.tight_layout()");
+        return L.join('\n');
+    }
+
+    // "Varios": una curva por parámetro seleccionado (checkbox tildado),
+    // cada una con su color elegido a mano. Solo aplica con eje numérico.
+    function buildMeanGroupMultiCode(csvKey) {
+        const atomRow  = document.getElementById('mg-atom-row');
+        const isAtoms  = atomRow && !atomRow.classList.contains('hidden');
+        const atom     = document.getElementById('mg-atom-select')?.value || '';
+        const meanType = document.querySelector('input[name="mg-mean-type"]:checked')?.value || 'simple';
+        const showErr  = document.getElementById('mg-show-errors')?.checked ?? true;
+
+        const selected = [...document.querySelectorAll('#mg-multi-params-list > div')]
+            .filter(row => row.querySelector('.mg-multi-check').checked)
+            .map(row => ({ param: row.dataset.param, color: row.querySelector('.mg-multi-color').value }));
+
+        const L = [];
+        L.push("df = data['" + csvKey + "'].copy()");
+        if (isAtoms) L.push("df = df[df['Atom'] == '" + atom + "']");
+        L.push("df['label'] = df['label'].astype(float)");
+        L.push("df = df.sort_values('label')");
+
+        if (selected.length === 0) {
+            L.push("# Ningún parámetro tildado -- no hay nada para graficar");
+        }
+        selected.forEach(({ param, color }) => {
+            const yCol   = meanType === 'fmean' ? param + '_fMean' : param;
+            const errCol = param + '_SEM';
+            L.push(showErr ? "yerr = df['" + errCol + "'] if '" + errCol + "' in df.columns else None"
+                            : "yerr = None");
+            L.push("plt.errorbar(df['label'], df['" + yCol + "'], yerr=yerr, color='" + color + "', marker='o', capsize=4, label='" + param + "')");
+        });
+
+        L.push("plt.xlabel('label')");
+        L.push("plt.ylabel('Valor')");
+        if (selected.length > 0) L.push("plt.legend()");
+        L.push("plt.grid(True, alpha=0.3)");
+        L.push("plt.tight_layout()");
+        return L.join('\n');
+    }
+
+
+    // ----------------------------------------------------------------
+    // MODO GRUPO — time_* (selector de 3 pasos: fijo / valor fijo / comparar)
+    // ----------------------------------------------------------------
+    function buildTimeGroupControls(meta) {
+        const isAtoms = meta.output_type === 'time_atoms';
+
+        const csvKey0  = Object.keys(loadedCSVs).find(k => k !== '__group_time__');
+        const cols     = csvKey0 ? Object.keys(loadedCSVs[csvKey0][0] || {}) : [];
+        const params   = (meta.params || []).filter(p => cols.includes(p));
+        const paramSel = document.getElementById('tg-param-select');
+        paramSel.innerHTML = '';
+        params.forEach(p => paramSel.appendChild(new Option(p, p)));
+
+        document.getElementById('tg-fixed-dim-row').classList.toggle('hidden', !isAtoms);
+        document.getElementById('tg-fixed-value-row').classList.toggle('hidden', !isAtoms);
+
+        if (isAtoms) {
+            document.getElementById('tg-fixed-dim').onchange = () => updateFixedValueOptions(meta);
+            document.getElementById('tg-fixed-dim').value = 'atom';
+            updateFixedValueOptions(meta);
+        } else {
+            // time_simple + grupo: la única dimensión para comparar es el sistema
+            document.getElementById('tg-compare-label').textContent = 'Comparar por Sistema';
+            const cmp = document.getElementById('tg-compare-value');
+            cmp.innerHTML = '<option value="__all__">Todos</option>';
+            (meta.subsistemas || []).forEach(s => cmp.appendChild(new Option(s.label, s.label)));
+        }
+
+        document.getElementById('sm-time-group-controls').classList.remove('hidden');
+    }
+
+    function updateFixedValueOptions(meta) {
+        const dim      = document.getElementById('tg-fixed-dim').value; // 'atom' | 'system'
+        const fixedSel = document.getElementById('tg-fixed-value');
+        const fixedLbl = document.getElementById('tg-fixed-value-label');
+        const cmpSel   = document.getElementById('tg-compare-value');
+        const cmpLbl   = document.getElementById('tg-compare-label');
+
+        fixedSel.innerHTML = '';
+        cmpSel.innerHTML   = '<option value="__all__">Todos</option>';
+
+        if (dim === 'atom') {
+            fixedLbl.textContent = 'Átomo';
+            cmpLbl.textContent   = 'Comparar por Sistema';
+            (meta.atoms || []).forEach(a => fixedSel.appendChild(new Option(a, a)));
+            (meta.subsistemas || []).forEach(s => cmpSel.appendChild(new Option(s.label, s.label)));
+        } else {
+            fixedLbl.textContent = 'Sistema';
+            cmpLbl.textContent   = 'Comparar por Átomo';
+            (meta.subsistemas || []).forEach(s => fixedSel.appendChild(new Option(s.label, s.label)));
+            (meta.atoms || []).forEach(a => cmpSel.appendChild(new Option(a, a)));
+        }
+    }
+
+    function buildTimeGroupCode(meta) {
+        const isAtoms  = meta.output_type === 'time_atoms';
+        const param    = document.getElementById('tg-param-select')?.value || (meta.params && meta.params[0]) || 'V1S';
+        const fixedDim = isAtoms ? (document.getElementById('tg-fixed-dim')?.value || 'atom') : 'system';
+        const fixedVal = isAtoms ? (document.getElementById('tg-fixed-value')?.value || '') : '';
+        const cmpVal   = document.getElementById('tg-compare-value')?.value || '__all__';
+
+        const L = [];
+        L.push("df = data['__group_time__'].copy()");
+
+        let groupCol;
+        if (isAtoms) {
+            if (fixedDim === 'atom') {
+                L.push("df = df[df['Atom'] == '" + fixedVal + "']");
+                if (cmpVal !== '__all__') L.push("df = df[df['label'] == '" + cmpVal + "']");
+                groupCol = 'label';
+            } else {
+                L.push("df = df[df['label'] == '" + fixedVal + "']");
+                if (cmpVal !== '__all__') L.push("df = df[df['Atom'] == '" + cmpVal + "']");
+                groupCol = 'Atom';
+            }
+        } else {
+            if (cmpVal !== '__all__') L.push("df = df[df['label'] == '" + cmpVal + "']");
+            groupCol = 'label';
+        }
+
+        L.push("groups = df['" + groupCol + "'].unique()");
+        L.push("colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']");
+        L.push("for i, grp in enumerate(groups):");
+        L.push("    sub = df[df['" + groupCol + "'] == grp]");
+        L.push("    plt.plot(sub['time'], sub['" + param + "'], label=str(grp), color=colors[i % len(colors)])");
+        L.push("plt.xlabel('Tiempo (ps)')");
+        L.push("plt.ylabel('" + param + "')");
+        L.push("if len(groups) > 1: plt.legend()");
+        L.push("plt.grid(True)");
+        L.push("plt.tight_layout()");
+        return L.join('\n');
+    }
+
     function buildMeanAtomsCode(csvKey) {
         const param    = document.getElementById('sm-param-select')?.value || 'V1S';
         const meanType = document.querySelector('input[name="sm-mean-type"]:checked')?.value || 'simple';
@@ -731,42 +1133,55 @@
         async function runSimplePlot() {
         if (!runMeta) return;
 
-        const sel = document.getElementById('csv-select');
-        if (sel && sel.value) await onCSVSelect(sel.value);
-
-        const csvKey = Object.keys(loadedCSVs)[0];
-        if (!csvKey) return;
-
+        const grouped = runMeta.modo === 'grupo';
         let code = '';
 
-        if (runMeta.output_type === 'mean_atoms') {
-            code = buildMeanAtomsCode(csvKey);
-        } else {
-            const xCol    = document.getElementById('sm-axis-x').value;
-            const yCol    = document.getElementById('sm-axis-y').value;
-            const colorBy = document.getElementById('sm-color-by')?.value || '';
-            const lines_  = [];
-            if (colorBy) {
-                lines_.push("df = data['" + csvKey + "']");
-                lines_.push("groups = df['" + colorBy + "'].unique() if '" + colorBy + "' in df.columns else []");
-                lines_.push("colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']");
-                lines_.push("for i, grp in enumerate(groups):");
-                lines_.push("    sub = df[df['" + colorBy + "'] == grp]");
-                lines_.push("    plt.plot(sub['" + xCol + "'], sub['" + yCol + "'], label=str(grp), color=colors[i % len(colors)])");
-                lines_.push("plt.xlabel('" + xCol + "')");
-                lines_.push("plt.ylabel('" + yCol + "')");
-                lines_.push("plt.legend()");
-                lines_.push("plt.grid(True)");
-                lines_.push("plt.tight_layout()");
+        if (grouped) {
+            const isMean = runMeta.output_type === 'mean_simple' || runMeta.output_type === 'mean_atoms';
+            if (isMean) {
+                const csvKey = Object.keys(loadedCSVs).find(k => k !== '__group_time__');
+                if (!csvKey) return;
+                code = buildMeanGroupCode(csvKey);
             } else {
-                lines_.push("df = data['" + csvKey + "']");
-                lines_.push("plt.plot(df['" + xCol + "'], df['" + yCol + "'], color='#38bdf8')");
-                lines_.push("plt.xlabel('" + xCol + "')");
-                lines_.push("plt.ylabel('" + yCol + "')");
-                lines_.push("plt.grid(True)");
-                lines_.push("plt.tight_layout()");
+                if (!loadedCSVs['__group_time__']) return;
+                code = buildTimeGroupCode(runMeta);
             }
-            code = lines_.join('\n');
+        } else {
+            const sel = document.getElementById('csv-select');
+            if (sel && sel.value) await onCSVSelect(sel.value);
+
+            const csvKey = Object.keys(loadedCSVs)[0];
+            if (!csvKey) return;
+
+            if (runMeta.output_type === 'mean_atoms') {
+                code = buildMeanAtomsCode(csvKey);
+            } else {
+                const xCol    = document.getElementById('sm-axis-x').value;
+                const yCol    = document.getElementById('sm-axis-y').value;
+                const colorBy = document.getElementById('sm-color-by')?.value || '';
+                const lines_  = [];
+                if (colorBy) {
+                    lines_.push("df = data['" + csvKey + "']");
+                    lines_.push("groups = df['" + colorBy + "'].unique() if '" + colorBy + "' in df.columns else []");
+                    lines_.push("colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']");
+                    lines_.push("for i, grp in enumerate(groups):");
+                    lines_.push("    sub = df[df['" + colorBy + "'] == grp]");
+                    lines_.push("    plt.plot(sub['" + xCol + "'], sub['" + yCol + "'], label=str(grp), color=colors[i % len(colors)])");
+                    lines_.push("plt.xlabel('" + xCol + "')");
+                    lines_.push("plt.ylabel('" + yCol + "')");
+                    lines_.push("plt.legend()");
+                    lines_.push("plt.grid(True)");
+                    lines_.push("plt.tight_layout()");
+                } else {
+                    lines_.push("df = data['" + csvKey + "']");
+                    lines_.push("plt.plot(df['" + xCol + "'], df['" + yCol + "'], color='#38bdf8')");
+                    lines_.push("plt.xlabel('" + xCol + "')");
+                    lines_.push("plt.ylabel('" + yCol + "')");
+                    lines_.push("plt.grid(True)");
+                    lines_.push("plt.tight_layout()");
+                }
+                code = lines_.join('\n');
+            }
         }
 
         setPlotState('loading');
@@ -830,7 +1245,8 @@
     function toggleDevMode(enabled) {
         document.getElementById('simple-mode-panel').classList.toggle('hidden', enabled);
         document.getElementById('dev-mode-panel').classList.toggle('hidden', !enabled);
-        document.getElementById('csv-select-container').classList.toggle('hidden', enabled);
+        const grouped = runMeta?.modo === 'grupo';
+        document.getElementById('csv-select-container').classList.toggle('hidden', enabled ? false : grouped);
         if (enabled) {
             preloadAllCSVs();
             if (lastAutoCode) setEditorCode(lastAutoCode);
