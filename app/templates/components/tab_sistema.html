@@ -73,11 +73,34 @@
         </div>
 
         <div id="sistema-detail" class="hidden rounded-lg border border-accent/30
-             bg-surface-800/80 px-5 py-4 space-y-2">
-            <p class="font-mono text-xs text-accent uppercase tracking-widest mb-3">Sistema seleccionado</p>
+             bg-surface-800/80 px-5 py-4 space-y-3">
+            <p class="font-mono text-xs text-accent uppercase tracking-widest">Sistema seleccionado</p>
             <p class="font-mono text-sm text-slate-200" id="detail-name"></p>
             <p class="text-xs text-slate-400" id="detail-desc"></p>
-            <div class="flex items-center justify-between pt-2">
+
+            {# ── Toggle Real / Minimizada ──────────────────────────────── #}
+            <div id="dataset-toggle" class="hidden pt-1">
+                <p class="font-mono text-xs text-slate-500 uppercase tracking-widest mb-2">Dataset</p>
+                <div class="flex gap-2">
+                    <button id="btn-dataset-real"
+                            onclick="window.selectDataset('real')"
+                            class="dataset-btn font-mono text-xs px-3 py-1.5 rounded-md border
+                                   border-border-dim text-slate-400 bg-surface-700/50
+                                   hover:border-accent/40 hover:text-accent transition-all duration-150">
+                        Real
+                    </button>
+                    <button id="btn-dataset-inherent"
+                            onclick="window.selectDataset('inherent')"
+                            class="dataset-btn font-mono text-xs px-3 py-1.5 rounded-md border
+                                   border-border-dim text-slate-400 bg-surface-700/50
+                                   hover:border-accent/40 hover:text-accent transition-all duration-150">
+                        Minimizada
+                    </button>
+                </div>
+                <p class="font-mono text-xs text-slate-600 mt-1.5" id="dataset-info"></p>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
                 <div class="flex flex-wrap gap-3" id="detail-chips"></div>
                 <button id="go-calculo-btn"
                         onclick="window.goToCalculo()"
@@ -137,13 +160,73 @@
             `<span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-accent">${s.total_ns} ns simulados</span>
              <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">&Delta;t ${s.interval_ps} ps</span>
              <span class="font-mono text-xs px-2 py-0.5 rounded bg-surface-600 border border-border-dim text-slate-400">${s.ensemble}</span>`;
+
+        // ── Toggle de dataset ─────────────────────────────────────────
+        const toggleEl   = document.getElementById('dataset-toggle');
+        const btnReal    = document.getElementById('btn-dataset-real');
+        const btnInh     = document.getElementById('btn-dataset-inherent');
+        const infoEl     = document.getElementById('dataset-info');
+        const hasReal    = s.has_real    !== false;   // true si el campo no está (sistemas viejos)
+        const hasInh     = s.has_inherent === true;
+
+        if (!hasReal && !hasInh) {
+            toggleEl.classList.add('hidden');
+        } else {
+            toggleEl.classList.remove('hidden');
+
+            btnReal.disabled = !hasReal;
+            btnInh.disabled  = !hasInh;
+            btnReal.classList.toggle('opacity-30', !hasReal);
+            btnInh.classList.toggle('opacity-30',  !hasInh);
+
+            // Default: Minimizada si está disponible, si no Real
+            const defaultDataset = hasInh ? 'inherent' : 'real';
+            const current = (window._activeSistemaId === id && window._activeDataset)
+                ? window._activeDataset
+                : defaultDataset;
+            applyDatasetHighlight(current, s);
+        }
+
         document.getElementById('sistema-detail').classList.remove('hidden');
     }
+
+    function applyDatasetHighlight(which, s) {
+        window._activeDataset = which;
+        const activeClass   = ['border-accent/60', 'text-accent', 'bg-accent/10'];
+        const inactiveClass = ['border-border-dim', 'text-slate-400', 'bg-surface-700/50'];
+        ['real','inherent'].forEach(d => {
+            const btn = document.getElementById(`btn-dataset-${d}`);
+            if (!btn) return;
+            const isActive = d === which;
+            activeClass.forEach(c   => btn.classList.toggle(c, isActive));
+            inactiveClass.forEach(c => btn.classList.toggle(c, !isActive));
+        });
+        const infoEl = document.getElementById('dataset-info');
+        if (which === 'real') {
+            infoEl.textContent = s.n_confs_real
+                ? `${s.n_confs_real} confs — trayectoria de producción`
+                : 'Trayectoria de producción';
+        } else {
+            infoEl.textContent = s.n_confs_inh
+                ? `${s.n_confs_inh} confs minimizados — estructuras inherentes`
+                : 'Estructuras minimizadas por-frame';
+        }
+    }
+
+    function selectDataset(which) {
+        const id = window._activeSistemaId;
+        if (!id) return;
+        const s  = sistemasData[id];
+        if (!s) return;
+        applyDatasetHighlight(which, s);
+    }
+    window.selectDataset = selectDataset;
 
     function selectSistema(card, id) {
         if (window._activeSistemaId === id) {
             // Deseleccionar
             window._activeSistemaId = null;
+            window._activeDataset   = null;
             window.enableCalculoTab(null);
             document.querySelectorAll('.sistema-card').forEach(c => {
                 c.classList.remove('border-accent/60', 'bg-surface-700/90');

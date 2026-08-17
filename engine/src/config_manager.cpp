@@ -286,10 +286,15 @@ static GroupInfo parseGroupToml(const fs::path& group_toml_path) {
 // ---------------------------------------------------------------------------
 
 struct ResolvedSystem {
-    std::string label;       // "" en modo sistema individual
-    fs::path    root;        // carpeta con system.top y system.toml
-    fs::path    dataset_dir; // root / dataset.path
-    std::string prefix;      // dataset.prefix
+    std::string label;             // "" en modo sistema individual
+    fs::path    root;              // carpeta con system.top y system.toml
+    fs::path    dataset_dir;       // root / dataset(which elegido).path
+    std::string prefix;            // dataset(which elegido).prefix
+    fs::path    real_dataset_dir;  // root / dataset.real.path -- SIEMPRE poblado
+                                    // (independiente de 'which'), porque la
+                                    // topología describe el sistema físico y
+                                    // puede vivir cerca del dataset real aun
+                                    // cuando se está calculando con el inherente.
 };
 
 // system.toml puede estar en 'path' directo, o -si 'path' quedó apuntando
@@ -329,10 +334,11 @@ static ResolvedSystem resolveOne(const fs::path& path, const std::string& datase
     }
 
     ResolvedSystem rs;
-    rs.label      = label;
-    rs.root       = root;
-    rs.dataset_dir= root / ds->path;
-    rs.prefix     = ds->prefix;
+    rs.label          = label;
+    rs.root           = root;
+    rs.dataset_dir    = root / ds->path;
+    rs.prefix         = ds->prefix;
+    rs.real_dataset_dir= root / si.dataset_real.path; // siempre, sea 'which' lo que sea
     return rs;
 }
 

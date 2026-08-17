@@ -289,7 +289,8 @@
         window.v4s.renderer.dispose();
     }
 
-    const SISTEMA_ID = "{{ sistema_id }}";
+    const SISTEMA_ID      = "{{ sistema_id }}";
+    const DATASET_DEFAULT = "{{ dataset }}";  // "real" | "inherent", viene de /tabs/calculo
 
     const CPK = {
         H: 0xFFFFFF, C: 0x404040, N: 0x3050F8, O: 0xFF0D0D,
@@ -829,6 +830,7 @@
 
         const payload = {
             sistema_id:     SISTEMA_ID,
+            dataset:        DATASET_DEFAULT,   // "real" | "inherent" — viene del toggle en Sistema
             params:         [...document.querySelectorAll('.v-checkbox:checked')].map(cb => cb.value),
             units:          document.querySelector('input[name="units"]:checked')?.value || 'kJ/mol',
             output_mode:    document.querySelector('input[name="output_mode"]:checked')?.value || 'mean',

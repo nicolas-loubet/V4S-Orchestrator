@@ -193,8 +193,9 @@
         function navToCalculo(el) {
             if (!window._activeSistemaId) return;
             setActive(el);
+            const dataset = window._activeDataset || 'real';
             htmx.ajax('GET',
-                '/tabs/calculo?sistema=' + window._activeSistemaId,
+                '/tabs/calculo?sistema=' + window._activeSistemaId + '&dataset=' + dataset,
                 '#tab-content'
             );
         }

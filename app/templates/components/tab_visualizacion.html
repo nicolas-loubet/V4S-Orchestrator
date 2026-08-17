@@ -155,6 +155,24 @@
                             </label>
                         </div>
 
+                        <div class="space-y-1.5">
+                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Paleta de color</label>
+                            <select id="ma-palette"
+                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                           text-slate-300 rounded-md px-3 py-2
+                                           focus:outline-none focus:border-accent/60 transition-colors">
+                                <option value="default">Ninguna (color único)</option>
+                                <option value="tab10">Tab10 — 10 colores categóricos</option>
+                                <option value="Set1">Set1 — colores saturados</option>
+                                <option value="Set2">Set2 — colores suaves</option>
+                                <option value="Dark2">Dark2 — colores oscuros</option>
+                                <option value="Paired">Paired — pares de colores</option>
+                                <option value="viridis">Viridis — escala continua</option>
+                                <option value="plasma">Plasma — escala continua</option>
+                                <option value="coolwarm">Coolwarm — divergente</option>
+                            </select>
+                        </div>
+
                         <button onclick="window.viz.runSimplePlot()"
                                 class="w-full font-mono text-xs py-2 rounded-md
                                        bg-accent/10 border border-accent/40 text-accent
@@ -183,13 +201,32 @@
                                 </select>
                             </div>
                         </div>
-                        <div id="sm-color-row" class="hidden space-y-1.5">
-                            <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Color por</label>
-                            <select id="sm-color-by"
-                                    class="w-full font-mono text-xs bg-surface-600 border border-border-dim
-                                           text-slate-300 rounded-md px-3 py-2
-                                           focus:outline-none focus:border-accent/60 transition-colors">
-                            </select>
+                        <div id="sm-color-row" class="hidden space-y-3">
+                            <div class="space-y-1.5">
+                                <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Color por</label>
+                                <select id="sm-color-by"
+                                        class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                               text-slate-300 rounded-md px-3 py-2
+                                               focus:outline-none focus:border-accent/60 transition-colors">
+                                </select>
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="font-mono text-xs text-slate-500 uppercase tracking-widest">Paleta de color</label>
+                                <select id="sm-time-palette"
+                                        class="w-full font-mono text-xs bg-surface-600 border border-border-dim
+                                               text-slate-300 rounded-md px-3 py-2
+                                               focus:outline-none focus:border-accent/60 transition-colors">
+                                    <option value="default">Ninguna (paleta fija)</option>
+                                    <option value="tab10">Tab10 — 10 colores categóricos</option>
+                                    <option value="Set1">Set1 — colores saturados</option>
+                                    <option value="Set2">Set2 — colores suaves</option>
+                                    <option value="Dark2">Dark2 — colores oscuros</option>
+                                    <option value="Paired">Paired — pares de colores</option>
+                                    <option value="viridis">Viridis — escala continua</option>
+                                    <option value="plasma">Plasma — escala continua</option>
+                                    <option value="coolwarm">Coolwarm — divergente</option>
+                                </select>
+                            </div>
                         </div>
                         <button onclick="window.viz.runSimplePlot()"
                                 class="w-full font-mono text-xs py-2 rounded-md
@@ -1099,6 +1136,7 @@
         const showN    = document.getElementById('sm-show-n')?.checked ?? false;
         const yCol     = meanType === 'fmean' ? param + '_fMean' : param;
         const errCol   = param + '_SEM';
+        const palette  = document.getElementById('ma-palette')?.value || 'default';
 
         const L = [];
         L.push("df = data['" + csvKey + "'].copy()");
@@ -1111,7 +1149,16 @@
             L.push("y_err  = None");
         }
         L.push("x      = range(len(atoms))");
-        L.push("colors = ['#4f86c6' if a != 'All' else '#2d5fa3' for a in atoms]");
+
+        // Coloración por átomo según paleta elegida en Cálculo
+        if (palette === 'default') {
+            L.push("colors = ['#4f86c6' if a != 'All' else '#2d5fa3' for a in atoms]");
+        } else {
+            L.push("import matplotlib.cm as _cm, numpy as _np");
+            L.push("_cmap   = _cm.get_cmap('" + palette + "', max(len(atoms), 2))");
+            L.push("colors  = [_cmap(i / max(len(atoms) - 1, 1)) for i in range(len(atoms))]");
+        }
+
         L.push("fig, ax1 = plt.subplots()");
         L.push("ax1.bar(x, y_vals, color=colors,");
         L.push("        yerr=y_err, capsize=5, error_kw=dict(ecolor='#94a3b8', lw=1.2))");
@@ -1159,14 +1206,22 @@
                 const xCol    = document.getElementById('sm-axis-x').value;
                 const yCol    = document.getElementById('sm-axis-y').value;
                 const colorBy = document.getElementById('sm-color-by')?.value || '';
+                const palette = document.getElementById('sm-time-palette')?.value || 'default';
                 const lines_  = [];
                 if (colorBy) {
                     lines_.push("df = data['" + csvKey + "']");
                     lines_.push("groups = df['" + colorBy + "'].unique() if '" + colorBy + "' in df.columns else []");
-                    lines_.push("colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']");
+                    if (palette === 'default') {
+                        lines_.push("colors = ['#38bdf8','#34d399','#f59e0b','#f87171','#a78bfa','#fb923c','#e879f9','#4ade80']");
+                        lines_.push("col_fn = lambda i: colors[i % len(colors)]");
+                    } else {
+                        lines_.push("import matplotlib.cm as _cm");
+                        lines_.push("_cmap = _cm.get_cmap('" + palette + "', max(len(groups), 2))");
+                        lines_.push("col_fn = lambda i: _cmap(i / max(len(groups) - 1, 1))");
+                    }
                     lines_.push("for i, grp in enumerate(groups):");
                     lines_.push("    sub = df[df['" + colorBy + "'] == grp]");
-                    lines_.push("    plt.plot(sub['" + xCol + "'], sub['" + yCol + "'], label=str(grp), color=colors[i % len(colors)])");
+                    lines_.push("    plt.plot(sub['" + xCol + "'], sub['" + yCol + "'], label=str(grp), color=col_fn(i))");
                     lines_.push("plt.xlabel('" + xCol + "')");
                     lines_.push("plt.ylabel('" + yCol + "')");
                     lines_.push("plt.legend()");

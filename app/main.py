@@ -279,15 +279,23 @@ async def tab_sistema(request: Request):
 
                 _ensure_xyz(folder)
 
+                dataset_meta = meta.get("dataset", {})
+                real_meta    = dataset_meta.get("real", {})
+                inh_meta     = dataset_meta.get("inherent", {})
+
                 sistemas.append({
-                    "id":          folder.name,
-                    "name":        meta.get("info", {}).get("name", folder.name),
-                    "description": meta.get("info", {}).get("description", "Sin descripcion."),
-                    "total_ns":    meta.get("simulation", {}).get("total_simulated_ns", 0.0),
-                    "interval_ps": meta.get("simulation", {}).get("snapshot_interval_ps", 0.0),
-                    "ensemble":    meta.get("simulation", {}).get("ensemble", "N/A"),
-                    "has_xyz":     (folder / "solute.xyz").exists(),
-                    "is_group":    False,
+                    "id":           folder.name,
+                    "name":         meta.get("info", {}).get("name", folder.name),
+                    "description":  meta.get("info", {}).get("description", "Sin descripcion."),
+                    "total_ns":     meta.get("simulation", {}).get("total_simulated_ns", 0.0),
+                    "interval_ps":  meta.get("simulation", {}).get("snapshot_interval_ps", 0.0),
+                    "ensemble":     meta.get("simulation", {}).get("ensemble", "N/A"),
+                    "has_xyz":      (folder / "solute.xyz").exists(),
+                    "is_group":     False,
+                    "has_real":     bool(real_meta),
+                    "has_inherent": bool(inh_meta.get("enabled", False)),
+                    "n_confs_real": real_meta.get("n_confs", 0),
+                    "n_confs_inh":  inh_meta.get("n_converged", 0),
                 })
             except Exception as e:
                 print(f"[V4S] Error leyendo {toml_file}: {e}")
@@ -308,16 +316,21 @@ def _build_group_card(folder: Path, group_meta: dict) -> dict:
     group      = group_meta.get("group", {})
     subsystems = group_meta.get("subsystem", [])
 
-    shared_sim = {}
+    shared_sim  = {}
+    shared_data = {}
     if subsystems:
         first_sub_toml = folder / subsystems[0].get("path", "") / "system.toml"
         if first_sub_toml.exists():
             try:
                 with open(first_sub_toml, "rb") as f:
-                    shared_sim = tomllib.load(f).get("simulation", {})
+                    first_doc    = tomllib.load(f)
+                    shared_sim   = first_doc.get("simulation", {})
+                    shared_data  = first_doc.get("dataset", {})
             except Exception as e:
                 print(f"[V4S] Error leyendo {first_sub_toml}: {e}")
 
+    real_meta = shared_data.get("real", {})
+    inh_meta  = shared_data.get("inherent", {})
     has_xyz, active_sub = _ensure_group_xyz(folder, group_meta)
 
     return {
@@ -329,6 +342,10 @@ def _build_group_card(folder: Path, group_meta: dict) -> dict:
         "ensemble":      shared_sim.get("ensemble", "N/A"),
         "has_xyz":       has_xyz,
         "is_group":      True,
+        "has_real":      bool(real_meta),
+        "has_inherent":  bool(inh_meta.get("enabled", False)),
+        "n_confs_real":  real_meta.get("n_confs", 0),
+        "n_confs_inh":   inh_meta.get("n_converged", 0),
         "variable":      group.get("variable", ""),
         "afecta_conf":   bool(group.get("afecta_conf", False)),
         "subsistemas":   [{"label": s.get("label", s.get("path", "")), "path": s.get("path", "")}
@@ -340,11 +357,13 @@ def _build_group_card(folder: Path, group_meta: dict) -> dict:
 @app.get("/tabs/calculo", response_class=HTMLResponse)
 async def tab_calculo(request: Request):
     sistema_id = request.query_params.get("sistema", "")
+    dataset    = request.query_params.get("dataset", "real")   # "real" | "inherent"
     has_xyz    = False
     if sistema_id:
         has_xyz = (DATA_PATH / sistema_id / "solute.xyz").exists()
     return _render("components/tab_calculo.html", request, {
         "sistema_id": sistema_id,
+        "dataset":    dataset,
         "has_xyz":    has_xyz,
     })
 
@@ -470,13 +489,14 @@ def _build_run_toml(n: int, sistema_id: str, modo: str, data: dict) -> dict:
             "autocenter": data.get("sph_autocenter", False),
         })
 
-    # path: en modo "sistema" apunta directo a estabilizacion/, que es
-    # donde vive system.top (el motor lo busca ahí, no en la raíz). En
-    # modo "grupo" sigue apuntando a la raíz del grupo — no hay un único
-    # system.top ahí, cada subsistema tiene el suyo dentro de su propia
-    # estabilizacion/, y eso lo resuelve el motor al leer group.toml.
+    # path: siempre la raíz del sistema (donde vive system.toml, el mismo
+    # requisito que usa "Elegir Sistema" para listarlo). El motor resuelve
+    # solo, desde ahí, tanto la topología (system.top, cerca del dataset
+    # elegido o del dataset real) como el dataset -- no hace falta adivinar
+    # subcarpetas desde Python. En modo "grupo" cada subsistema tiene su
+    # propio system.toml en su raíz, resuelto por el motor vía group.toml.
     sistema_root = DATA_PATH / sistema_id
-    run_path = (sistema_root / "estabilizacion") if modo == "sistema" else sistema_root
+    run_path = sistema_root
 
     return {
         "meta": {
