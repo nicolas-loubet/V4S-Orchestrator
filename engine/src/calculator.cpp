@@ -53,14 +53,50 @@ unique_ptr<Filter::GeometryConstraint> calculateLimits(RunConfig& cfg) {
     return filter;
 }
 
-unique_ptr<Filter::GeometryConstraint> recalculateCenters(vector<string>& atom_names, double radius, TopolInfo& ti, Configuration& conf) {
+#ifndef DIFF_RESID_MOLECULE
+#error "El motor asume compilacion con -DDIFF_RESID_MOLECULE (molecule_sequence/name_to_diffid en TopolInfo); sin eso, buildSoluteDiffIdMap no puede armar el mapeo instancia->tipo."
+#endif
+
+// atom_type_name_charge_mass está indexado por TIPO de molécula (diff_id),
+// no por instancia -- si hay varias copias del mismo tipo de soluto (ej. 8
+// iones CL, todos el mismo tipo), la instancia m NO es lo mismo que m-1 como
+// índice de tipo. Este mapeo se arma UNA VEZ por sistema (no cambia entre
+// frames, es pura topología) recorriendo ti.molecule_sequence -bloques en el
+// mismo orden que [molecules] en el .top- y resolviendo cada bloque a su
+// diff_id vía ti.name_to_diffid.
+vector<int> buildSoluteDiffIdMap(const TopolInfo& ti) {
+    vector<int> diff_id_of(ti.num_solutes + 1, -1); // 1-indexado; [0] no se usa
+
+    int instance= 1;
+    for(const auto& [name, count]: ti.molecule_sequence) {
+        auto it= ti.name_to_diffid.find(name);
+        if(it == ti.name_to_diffid.end())
+            throw runtime_error("No se encontró diff_id para la molécula '" + name + "' en name_to_diffid");
+
+        for(int k= 0; k < count && instance <= ti.num_solutes; k++, instance++)
+            diff_id_of[instance]= it->second;
+
+        if(instance > ti.num_solutes) break;
+    }
+
+    if(instance <= ti.num_solutes)
+        throw runtime_error("molecule_sequence no cubre las " + to_string(ti.num_solutes) +
+                             " instancias de soluto esperadas (solo llegó a " + to_string(instance-1) + ")");
+
+    return diff_id_of;
+}
+
+unique_ptr<Filter::GeometryConstraint> recalculateCenters(vector<string>& atom_names, double radius, TopolInfo& ti, Configuration& conf, const vector<int>& diff_id_of) {
     vector<Vector> centros;
     for(int m= 1; m <= ti.num_solutes; m++) {
         for(int a= 1; a <= conf.getMolec(m).getNAtoms(); a++) {
-            auto[type,name,q,mass]= ti.atom_type_name_charge_mass[m-1].at(a);
+            auto[type,name,q,mass]= ti.atom_type_name_charge_mass.at(diff_id_of.at(m)).at(a);
             for(string name_i: atom_names) {
                 if(name == name_i) {
                     centros.push_back(conf.getMolec(m).getAtom(a).getPosition());
+                    break; // un solo centro por átomo de soluto, sin importar cuántas veces
+                           // aparezca su nombre repetido en atom_names (ej. modo ALL, donde
+                           // "CA"/"N"/"C"/"O" se repiten una vez por residuo)
                 }
             }
         }
@@ -117,18 +153,27 @@ string escribirGRO(Vector pos, int res) {
 // que nunca se cargaron. Por eso acá chequeamos existencia ANTES de
 // llamarla, y fallamos con mensaje claro si no aparece.
 //
-// system.top vive junto al dataset, no junto a system.toml: se busca primero
-// DENTRO de la carpeta de confs (dataset_dir), y si no está ahí, en su
-// carpeta contenedora (ej. "estabilizacion/", un nivel arriba de "confs/").
-static fs::path resolveTopologyPath(const fs::path& dataset_dir) {
-    fs::path inside_dataset= dataset_dir / "system.top";
-    if(fs::exists(inside_dataset)) return inside_dataset;
+// system.top vive junto al dataset, no junto a system.toml. Pero "junto al
+// dataset" es ambiguo cuando which=="inherent": el .top puede estar cerca de
+// confs_min/ (donde estamos parados) O cerca de estabilizacion/confs/ (el
+// dataset real), que son carpetas HERMANAS, no una contenida en la otra. La
+// topología describe el sistema físico, no cambia entre datasets, así que
+// probamos las 4 combinaciones: dataset elegido (+contenedora) y dataset
+// real (+contenedora) -- si which=="real" ya son las mismas dos, sin costo
+// extra real (fs::exists es barato).
+static fs::path resolveTopologyPath(const ResolvedSystem& rs) {
+    const vector<fs::path> candidates= {
+        rs.dataset_dir / "system.top",
+        rs.dataset_dir.parent_path() / "system.top",
+        rs.real_dataset_dir / "system.top",
+        rs.real_dataset_dir.parent_path() / "system.top",
+    };
 
-    fs::path containing_dir= dataset_dir.parent_path() / "system.top";
-    if(fs::exists(containing_dir)) return containing_dir;
+    for(const fs::path& c: candidates) if(fs::exists(c)) return c;
 
-    throw runtime_error("No se encontró system.top ni en '" + inside_dataset.string() +
-                         "' ni en la carpeta contenedora '" + containing_dir.string() + "'");
+    string tried;
+    for(const fs::path& c: candidates) tried+= "\n  - " + c.string();
+    throw runtime_error("No se encontró system.top en ninguna de estas rutas:" + tried);
 }
 
 // Un sistema resuelto junto con la lista de frames ya globbeada. Se
@@ -151,8 +196,9 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
                                                     int frame_offset, int total_frames) {
     const string label_prefix= rs.label.empty() ? "" : ("[" + rs.label + "] ");
 
-    TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology(resolveTopologyPath(rs.dataset_dir).string());
+    TopolInfo ti= ReaderFactory::createTopologyReader(ReaderFactory::ProgramFormat::GROMACS)->readTopology(resolveTopologyPath(rs).string());
     CoordinateReader* cr= ReaderFactory::createCoordinateReader(ReaderFactory::ProgramFormat::GROMACS);
+    const vector<int> diff_id_of= buildSoluteDiffIdMap(ti); // instancia de soluto -> tipo, una sola vez
 
     double progress= 0.0; int eta= 0;
     auto start_time= chrono::steady_clock::now();
@@ -165,13 +211,43 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
     vector<string> list_atom_names;
 
     if(cfg.all_mode) {
-        Configuration conf_0(cr, (rs.dataset_dir / files[0].second).string(), ti);
-        for(int m= 1; m <= ti.num_solutes; m++)
-            for(int a= 1; a <= conf_0.getMolec(m).getNAtoms(); a++)
-                list_atom_names.push_back( get<1>(ti.atom_type_name_charge_mass[m-1].at(a)) );
-        cfg.atom_selection= "";
-        for(string name: list_atom_names) cfg.atom_selection+= name + " ";
-        cfg.atom_selection= cfg.atom_selection.substr(0, cfg.atom_selection.size()-1);
+        try {
+            Configuration conf_0(cr, (rs.dataset_dir / files[0].second).string(), ti);
+            for(int m= 1; m <= ti.num_solutes; m++) {
+                int diff_id;
+                try {
+                    diff_id= diff_id_of.at(m);
+                } catch(const exception& e) {
+                    throw runtime_error("diff_id_of.at(m=" + to_string(m) + ") fuera de rango (diff_id_of.size()=" +
+                                         to_string(diff_id_of.size()) + "): " + e.what());
+                }
+
+                int n_atoms_m;
+                try {
+                    n_atoms_m= conf_0.getMolec(m).getNAtoms();
+                } catch(const exception& e) {
+                    throw runtime_error("conf_0.getMolec(m=" + to_string(m) + ") falló: " + e.what());
+                }
+
+                for(int a= 1; a <= n_atoms_m; a++) {
+                    try {
+                        list_atom_names.push_back( get<1>(ti.atom_type_name_charge_mass.at(diff_id).at(a)) );
+                    } catch(const exception& e) {
+                        throw runtime_error("atom_type_name_charge_mass.at(diff_id=" + to_string(diff_id) +
+                                             ").at(a=" + to_string(a) + ") para instancia m=" + to_string(m) +
+                                             " (n_atoms_m=" + to_string(n_atoms_m) +
+                                             ", atom_type_name_charge_mass.size()=" + to_string(ti.atom_type_name_charge_mass.size()) +
+                                             "): " + e.what());
+                    }
+                }
+            }
+            cfg.atom_selection= "";
+            for(string name: list_atom_names) cfg.atom_selection+= name + " ";
+            cfg.atom_selection= cfg.atom_selection.substr(0, cfg.atom_selection.size()-1);
+        } catch(const exception& e) {
+            throw runtime_error(label_prefix + "Fallo armando la selección ALL (num_solutes=" +
+                                 to_string(ti.num_solutes) + "): " + e.what());
+        }
     } else if(using_sph_autocenter) list_atom_names= splitNames(cfg.atom_selection);
 
     writeStatus(cfg.run_dir, "running", progress, eta, cfg.pid, label_prefix+"Iniciando primeros frames...");
@@ -213,7 +289,7 @@ unique_ptr<Writer::Output> runCalculationForSystem(RunConfig& cfg, const Resolve
 
         if(using_sph_autocenter) {
             try {
-                filter= recalculateCenters(list_atom_names, cfg.sph_radius, ti, conf);
+                filter= recalculateCenters(list_atom_names, cfg.sph_radius, ti, conf, diff_id_of);
             } catch(const exception& e) {
                 throw runtime_error(label_prefix + "Fallo RECALCULANDO CENTROS en frame " + to_string(frame_number) + ": " + e.what());
             }
